@@ -401,6 +401,19 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
         def do_GET(self) -> None:
             parsed = urllib.parse.urlparse(self.path)
             path = _normalized_request_path(self.path)
+            if path == "/overlay":
+                overlay_fp = os.path.join(root_dir, "overlay.html")
+                if not os.path.isfile(overlay_fp):
+                    self._send_json(404, {"ok": False, "error": "overlay.html not found"})
+                    return
+                try:
+                    with open(overlay_fp, "rb") as f:
+                        html = f.read()
+                except OSError:
+                    self._send_json(500, {"ok": False, "error": "overlay read failed"})
+                    return
+                self._send_bytes(200, html, "text/html; charset=utf-8")
+                return
             if path == "/api/configs":
                 self._send_json(200, {"ok": True, "names": _list_saved_config_names(configs_dir)})
                 return
@@ -520,7 +533,9 @@ def start_http_server_background() -> None:
                     return
         else:
             return
-        log(f"HTTP 页面与配置 API: http://{HTTP_HOST}:{HTTP_PORT}/")
+        log(f"控制台页面: http://{HTTP_HOST}:{HTTP_PORT}/")
+        log(f"OBS 专用地址: http://{HTTP_HOST}:{HTTP_PORT}/overlay")
+        log(f"配置 API: http://{HTTP_HOST}:{HTTP_PORT}/api/configs")
         httpd.serve_forever()
 
     threading.Thread(target=run, name="http-overlay", daemon=True).start()

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOTA键盘显示 - OBS Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+
+        #keyboard-container {
+            position: fixed;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            display: inline-block;
+            pointer-events: none;
+        }
+
+        #bg-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        #keyboard-canvas {
+            position: relative;
+            z-index: 1;
+            outline: none;
+            pointer-events: none;
+        }
+
+        #ws-status {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        window.__VK_APP_MODE = 'overlay';
+    </script>
+
+    <div id="keyboard-container">
+        <img id="bg-image" style="display:none; visibility:hidden;" alt="">
+        <canvas id="keyboard-canvas" tabindex="-1" title="OBS Overlay"></canvas>
+    </div>
+
+    <script src="js/keyboard_pure_utils.js"></script>
+    <script src="js/keyboard_render_module.js"></script>
+    <script src="js/keyboard_snap_module.js"></script>
+    <script src="js/keyboard_snap_controls_module.js"></script>
+    <script src="js/keyboard_panel_module.js"></script>
+    <script src="js/keyboard_key_list_module.js"></script>
+    <script src="js/keyboard_history_module.js"></script>
+    <script src="js/keyboard_key_edit_module.js"></script>
+    <script src="js/keyboard_color_picker_module.js"></script>
+    <script src="js/keyboard_key_bg_module.js"></script>
+    <script src="js/keyboard_input_module.js"></script>
+    <script src="js/keyboard_mouse_helpers_module.js"></script>
+    <script src="js/keyboard_mouse_down_module.js"></script>
+    <script src="js/keyboard_mouse_move_module.js"></script>
+    <script src="js/keyboard_config_module.js"></script>
+    <script src="js/keyboard_network_module.js"></script>
+    <script src="keyboard.js"></script>
+</body>
+</html>

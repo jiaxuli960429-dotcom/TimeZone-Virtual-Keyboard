@@ -95,6 +95,8 @@ let snapConfig = {
 
 /** Built-in layout shipped with the repo (same schema as saved profiles). */
 const BUILTIN_DEFAULT_CONFIG_URL = 'configs/default.json';
+const APP_MODE = window.__VK_APP_MODE === 'overlay' ? 'overlay' : 'console';
+const IS_OVERLAY_MODE = APP_MODE === 'overlay';
 
 // ==================== 模块引用与通用工具 ====================
 const pureUtils = window.KeyboardPureUtils;
@@ -473,42 +475,169 @@ function openConfigUpload() {
     if (upload) upload.click();
 }
 
+function getOverlayUrl() {
+    const u = new URL(window.location.href);
+    return `${u.origin}/overlay`;
+}
+
+function updateObsOverlayUrlField() {
+    const input = byId('obs-overlay-url');
+    if (!input) return;
+    input.value = getOverlayUrl();
+}
+
+async function copyObsOverlayUrl() {
+    const url = getOverlayUrl();
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(url);
+        } else {
+            const temp = document.createElement('textarea');
+            temp.value = url;
+            temp.style.position = 'fixed';
+            temp.style.opacity = '0';
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+        }
+        alert('OBS 专用地址已复制：\n' + url);
+    } catch (err) {
+        console.error('复制 OBS 地址失败:', err);
+        alert('复制失败，请手动复制：\n' + url);
+    }
+}
+
+function openObsOverlayUrl() {
+    window.open(getOverlayUrl(), '_blank', 'noopener,noreferrer');
+}
+
+function switchConsoleTab(tabId) {
+    const target = ['appearance', 'layout', 'config'].includes(tabId) ? tabId : 'appearance';
+
+    const appearance = byId('tab-appearance');
+    const layout = byId('tab-layout');
+    const snap = byId('tab-snap');
+    const config = byId('tab-config');
+
+    if (appearance) appearance.classList.toggle('active', target === 'appearance');
+    if (layout) layout.classList.toggle('active', target === 'layout');
+    if (snap) snap.classList.toggle('active', target === 'layout');
+    if (config) config.classList.toggle('active', target === 'config');
+
+    const appearanceBtn = byId('tab-btn-appearance');
+    const layoutBtn = byId('tab-btn-layout');
+    const configBtn = byId('tab-btn-config');
+    if (appearanceBtn) appearanceBtn.classList.toggle('active', target === 'appearance');
+    if (layoutBtn) layoutBtn.classList.toggle('active', target === 'layout');
+    if (configBtn) configBtn.classList.toggle('active', target === 'config');
+}
+
+function fitConsoleCanvasToPreviewStage() {
+    if (IS_OVERLAY_MODE || !canvas) return;
+    const stage = byId('preview-stage');
+    if (!stage) return;
+
+    const stageStyle = getComputedStyle(stage);
+    const padLeft = parseFloat(stageStyle.paddingLeft || '0') || 0;
+    const padRight = parseFloat(stageStyle.paddingRight || '0') || 0;
+    const available = Math.max(1200, Math.floor(stage.clientWidth - padLeft - padRight - 24));
+
+    if (CONFIG.canvasWidth !== available) {
+        CONFIG.canvasWidth = available;
+        canvas.width = CONFIG.canvasWidth;
+        canvas.height = CONFIG.canvasHeight;
+        invalidateCanvas();
+    }
+}
+
+function setupVerticalLayoutSplitter() {
+    if (IS_OVERLAY_MODE) return;
+    const shell = byId('app-shell');
+    const splitter = byId('layout-splitter');
+    if (!shell || !splitter) return;
+
+    const SPLITTER_H = splitter.offsetHeight || 12;
+    const MIN_TOP = 280;
+    const MIN_BOTTOM = 200;
+    let dragging = false;
+    let startY = 0;
+    let startTop = 0;
+
+    function applyByTop(topPx) {
+        const shellHeight = shell.clientHeight;
+        const clampedTop = Math.max(MIN_TOP, Math.min(topPx, shellHeight - MIN_BOTTOM - SPLITTER_H));
+        const bottom = Math.max(MIN_BOTTOM, shellHeight - clampedTop - SPLITTER_H);
+        shell.style.gridTemplateRows = `${Math.round(clampedTop)}px ${SPLITTER_H}px ${Math.round(bottom)}px`;
+        fitConsoleCanvasToPreviewStage();
+    }
+
+    function onMove(e) {
+        if (!dragging) return;
+        const delta = e.clientY - startY;
+        applyByTop(startTop + delta);
+    }
+
+    function onUp() {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('is-resizing-layout');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+    }
+
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        startY = e.clientY;
+        const preview = shell.querySelector('.preview-pane');
+        startTop = preview ? preview.getBoundingClientRect().height : Math.round(shell.clientHeight * 0.64);
+        document.body.classList.add('is-resizing-layout');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    });
+}
+
 // ==================== 初始化 ====================
 document.addEventListener('DOMContentLoaded', async () => {
     setupDeclarativeControlBindings();
+    updateObsOverlayUrlField();
+    switchConsoleTab('appearance');
+    setupVerticalLayoutSplitter();
 
     canvas = document.getElementById('keyboard-canvas');
     ctx = canvas.getContext('2d');
 
     canvas.width = CONFIG.canvasWidth;
     canvas.height = CONFIG.canvasHeight;
+    fitConsoleCanvasToPreviewStage();
 
-    // 键盘事件
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    if (!IS_OVERLAY_MODE) {
+        // 键盘事件
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
 
-    // 鼠标事件
-    canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('mouseleave', handleMouseUp);
-    canvas.addEventListener('dblclick', handleDoubleClick);
-    canvas.addEventListener('wheel', handleMouseWheel);
+        // 鼠标事件
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('mouseleave', handleMouseUp);
+        canvas.addEventListener('dblclick', handleDoubleClick);
+        canvas.addEventListener('wheel', handleMouseWheel);
 
-    // F2显示控制面板
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'F2') {
-            toggleControls();
-        }
-    });
+        window.addEventListener('resize', fitConsoleCanvasToPreviewStage);
+    }
 
     // 初始化透明度控件可见性
     updateOpacityControlsVisibility(false);
 
     // 初始化吸附功能参数设置条的可见性
-    document.getElementById('snap-edges-controls').style.display = snapConfig.toEdges ? 'block' : 'none';
-    document.getElementById('snap-center-controls').style.display = snapConfig.toCenter ? 'block' : 'none';
-    document.getElementById('snap-assist-controls').style.display = snapConfig.toAssist ? 'block' : 'none';
+    const snapEdgesControls = byId('snap-edges-controls');
+    const snapCenterControls = byId('snap-center-controls');
+    const snapAssistControls = byId('snap-assist-controls');
+    if (snapEdgesControls) snapEdgesControls.style.display = snapConfig.toEdges ? 'block' : 'none';
+    if (snapCenterControls) snapCenterControls.style.display = snapConfig.toCenter ? 'block' : 'none';
+    if (snapAssistControls) snapAssistControls.style.display = snapConfig.toAssist ? 'block' : 'none';
 
     await loadBuiltinDefaultConfig();
 
@@ -517,13 +646,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateKeyList();
     invalidateCanvas();
 
-    setupKeyEditModalListeners();
+    if (!IS_OVERLAY_MODE) {
+        setupKeyEditModalListeners();
+    }
 
     connectWebSocket();
 
     refreshSavedConfigSelect();
 
     updateUndoRedoButtons();
+    fitConsoleCanvasToPreviewStage();
 });
 
 /**
@@ -1364,6 +1496,7 @@ function applyConfig(config) {
             if (canvas && CONFIG.canvasWidth && CONFIG.canvasHeight) {
                 canvas.width = CONFIG.canvasWidth;
                 canvas.height = CONFIG.canvasHeight;
+                fitConsoleCanvasToPreviewStage();
             }
         },
         ensureKeySizeDefaults: () => {
@@ -1439,7 +1572,8 @@ function connectWebSocket() {
             },
             set wsStatusFadeTimerId(v) {
                 wsStatusFadeTimerId = v;
-            }
+            },
+            suppressStatus: IS_OVERLAY_MODE
         },
         pressedKeys,
         invalidateCanvas

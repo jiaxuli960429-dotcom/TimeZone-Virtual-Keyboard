@@ -40,9 +40,10 @@ echo    Started!
 echo ========================================
 echo.
 echo Usage:
-echo 1. In OBS, add Browser source, URL: http://localhost:8080
-echo 2. Recommended size: 1200x400
-echo 3. Check "Use custom frame rate": 60 FPS
+echo 1. Control panel: http://localhost:8080
+echo 2. OBS Browser source URL: http://localhost:8080/overlay
+echo 3. Recommended size: 1200x400
+echo 4. Check "Use custom frame rate": 60 FPS
 echo.
 echo Features:
 echo - Global keyboard capture: works even when browser is not focused

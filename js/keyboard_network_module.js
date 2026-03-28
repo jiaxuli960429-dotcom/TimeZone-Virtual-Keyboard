@@ -130,6 +130,7 @@
     }
 
     function handleWebSocketMessage(data, pressedKeys, invalidateCanvas) {
+        if (!pressedKeys) return;
         if (data.type === 'key') {
             if (data.pressed) {
                 pressedKeys.add(data.code);
@@ -145,20 +146,12 @@
 
     function showConnectionStatus(connected, state) {
         const st = state || {};
+        if (st.suppressStatus) return st.wsStatusFadeTimerId || null;
         let statusDiv = document.getElementById('ws-status');
         if (!statusDiv) {
             statusDiv = document.createElement('div');
             statusDiv.id = 'ws-status';
-            statusDiv.style.cssText = [
-                'position: fixed',
-                'bottom: 10px',
-                'right: 10px',
-                'padding: 5px 10px',
-                'border-radius: 4px',
-                'font-size: 12px',
-                'z-index: 10000',
-                'transition: all 0.3s'
-            ].join(';');
+            statusDiv.className = 'ws-status-chip';
             document.body.appendChild(statusDiv);
         }
 
@@ -167,19 +160,18 @@
             st.wsStatusFadeTimerId = null;
         }
         statusDiv.style.opacity = '1';
+        statusDiv.classList.remove('connected', 'disconnected');
 
         if (connected) {
             statusDiv.textContent = '全局按键捕获：已连接';
-            statusDiv.style.background = 'rgba(0, 200, 0, 0.8)';
-            statusDiv.style.color = 'white';
+            statusDiv.classList.add('connected');
         } else {
             statusDiv.textContent = '全局按键捕获：未连接（请运行 key_server.py）';
-            statusDiv.style.background = 'rgba(200, 0, 0, 0.8)';
-            statusDiv.style.color = 'white';
+            statusDiv.classList.add('disconnected');
         }
 
         st.wsStatusFadeTimerId = setTimeout(() => {
-            statusDiv.style.opacity = '0.5';
+            statusDiv.style.opacity = '0.58';
             st.wsStatusFadeTimerId = null;
         }, 5000);
         return st.wsStatusFadeTimerId;
