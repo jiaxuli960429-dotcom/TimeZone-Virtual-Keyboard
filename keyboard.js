@@ -32,6 +32,7 @@ let wsStatusFadeTimerId = null;
 
 let editingKey = null; // 当前正在编辑的按键
 let editingKeyBackup = null; // 编辑前的按键备份，用于取消操作
+let keyEditShouldCommit = false; // 编辑菜单关闭时是否提交（仅保存按钮置为 true）
 /** 画布上单击选中的按键（Delete 删除）；与拖动分离：超过阈值才进入拖动 */
 let selectedKey = null;
 let dragCandidateKey = null;
@@ -212,6 +213,10 @@ function keyEditCtx() {
         getEditingKeyBackup: () => editingKeyBackup,
         setEditingKeyBackup: (value) => {
             editingKeyBackup = value;
+        },
+        getKeyEditShouldCommit: () => keyEditShouldCommit,
+        setKeyEditShouldCommit: (value) => {
+            keyEditShouldCommit = value;
         },
         setSelectedKey: (value) => {
             selectedKey = value;
@@ -804,7 +809,12 @@ function handleMouseDown(e) {
         return;
     }
 
-    selectedKey = null;
+    if (editingKey) {
+        // 编辑菜单打开期间，始终保持被编辑按键的选中视觉
+        selectedKey = editingKey;
+    } else {
+        selectedKey = null;
+    }
     updateKeyList();
 
     // 如果没有点击到按键
@@ -822,6 +832,8 @@ function handleMouseDown(e) {
 
     // 编辑菜单打开时，即使没有独立背景，也禁用全局背景的拖动
     if (editingKey) {
+        // 兜底：任何空白点击都不应清掉编辑态选中高亮
+        selectedKey = editingKey;
         return;
     }
 

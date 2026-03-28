@@ -200,6 +200,15 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
         if char in _DOM_KEY_MAP:
             return _DOM_KEY_MAP[char]
 
+    # Fallback for control-combos (e.g. Ctrl+A) where `key.char` may be "\x01".
+    # Use virtual-key codes to recover the physical key.
+    vk = getattr(key, "vk", None)
+    if isinstance(vk, int):
+        if 65 <= vk <= 90:  # A-Z
+            return f"Key{chr(vk)}"
+        if 48 <= vk <= 57:  # 0-9
+            return f"Digit{chr(vk)}"
+
     key_name = str(key).replace("Key.", "").lower()
 
     if key_name in _DOM_KEY_MAP:

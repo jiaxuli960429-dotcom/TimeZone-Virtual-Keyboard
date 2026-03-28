@@ -106,9 +106,33 @@
         if (dragHandle) dragHandle.addEventListener('mousedown', startDragKeyEditModal);
     }
 
+    function restoreEditingKeyFromBackup(ctx, editingKey, editingKeyBackup) {
+        const keys = ctx.getKeys();
+        const keyIndex = keys.findIndex((k) => k.code === editingKey.code);
+        if (keyIndex === -1) return;
+
+        const currentKey = keys[keyIndex];
+        const restoredKey = JSON.parse(JSON.stringify(editingKeyBackup));
+        if (currentKey && currentKey._bgImageObj) {
+            restoredKey._bgImageObj = currentKey._bgImageObj;
+        }
+        keys[keyIndex] = restoredKey;
+        ctx.setKeys(keys);
+        ctx.setSelectedKey(restoredKey);
+    }
+
     function openKeyEdit(ctx, key) {
         if (!ctx || !key) return;
 
+        // 若当前已在编辑别的按键，且未点击保存，则先回滚该按键的所有临时修改
+        const previousEditingKey = ctx.getEditingKey();
+        const previousBackup = ctx.getEditingKeyBackup();
+        const previousShouldCommit = !!ctx.getKeyEditShouldCommit();
+        if (previousEditingKey && previousBackup && !previousShouldCommit) {
+            restoreEditingKeyFromBackup(ctx, previousEditingKey, previousBackup);
+        }
+
+        ctx.setKeyEditShouldCommit(false);
         ctx.setEditingKeyBackup(JSON.parse(JSON.stringify(key)));
         ctx.setEditingKey(key);
         ctx.setSelectedKey(key);
@@ -179,12 +203,24 @@
 
     function closeKeyEdit(ctx) {
         if (!ctx) return;
+        const editingKey = ctx.getEditingKey();
+        const editingKeyBackup = ctx.getEditingKeyBackup();
+        const shouldCommit = !!ctx.getKeyEditShouldCommit();
+
+        if (editingKey && editingKeyBackup && !shouldCommit) {
+            restoreEditingKeyFromBackup(ctx, editingKey, editingKeyBackup);
+        } else if (editingKey) {
+            // 保存关闭后也保持该按键视觉选中
+            ctx.setSelectedKey(editingKey);
+        }
+
         ctx.setIsDraggingKeyBg(false);
         ctx.setDraggedKeyBg(null);
 
         document.getElementById('key-edit-modal').classList.add('hidden');
         ctx.setEditingKey(null);
         ctx.setEditingKeyBackup(null);
+        ctx.setKeyEditShouldCommit(false);
         ctx.updateKeyList();
         ctx.invalidateCanvas();
     }
@@ -221,28 +257,13 @@
         }
 
         delete editingKey._previewPressed;
+        ctx.setKeyEditShouldCommit(true);
         closeKeyEdit(ctx);
     }
 
     function cancelKeyEdit(ctx) {
         if (!ctx) return;
-        const editingKey = ctx.getEditingKey();
-        const editingKeyBackup = ctx.getEditingKeyBackup();
-        if (!editingKey || !editingKeyBackup) return;
-
-        const keys = ctx.getKeys();
-        const keyIndex = keys.findIndex((k) => k.code === editingKey.code);
-        if (keyIndex !== -1) {
-            const originalKey = keys[keyIndex];
-            const restoredKey = JSON.parse(JSON.stringify(editingKeyBackup));
-            if (originalKey._bgImageObj) {
-                restoredKey._bgImageObj = originalKey._bgImageObj;
-            }
-            keys[keyIndex] = restoredKey;
-            ctx.setSelectedKey(restoredKey);
-            ctx.setKeys(keys);
-        }
-
+        ctx.setKeyEditShouldCommit(false);
         closeKeyEdit(ctx);
     }
 
