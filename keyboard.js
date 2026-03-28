@@ -158,6 +158,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('snap-center-controls').style.display = snapConfig.toCenter ? 'block' : 'none';
     document.getElementById('snap-assist-controls').style.display = snapConfig.toAssist ? 'block' : 'none';
 
+    setupKeyEditModalListeners();
+
     // 尝试加载保存的配置
     loadSavedConfig();
 
@@ -1111,6 +1113,13 @@ let keyEditModalDrag = {
     offsetY: 0
 };
 
+/** One-time listeners; handlers read `editingKey` when events fire (avoids duplicate binds on each open). */
+function setupKeyEditModalListeners() {
+    document.getElementById('edit-key-active-color').addEventListener('input', handleKeyActiveColorPreview);
+    document.getElementById('edit-key-inactive-color').addEventListener('input', handleKeyInactiveColorPreview);
+    document.getElementById('key-edit-drag-handle').addEventListener('mousedown', startDragKeyEditModal);
+}
+
 function openKeyEdit(key) {
     // 备份按键原始状态，用于取消操作
     editingKeyBackup = JSON.parse(JSON.stringify(key));
@@ -1168,10 +1177,6 @@ function openKeyEdit(key) {
         bgAdvancedRow.style.display = 'none';
     }
 
-    // 添加颜色选择器的预览事件监听
-    document.getElementById('edit-key-active-color').addEventListener('input', handleKeyActiveColorPreview);
-    document.getElementById('edit-key-inactive-color').addEventListener('input', handleKeyInactiveColorPreview);
-
     // 设置按键背景图片
     setupKeyBackgroundImageUI(key);
 
@@ -1181,10 +1186,6 @@ function openKeyEdit(key) {
     modal.style.left = 'auto';
     modal.style.top = 'auto';
     modal.style.transform = 'none';
-
-    // 添加拖动事件监听
-    const dragHandle = document.getElementById('key-edit-drag-handle');
-    dragHandle.addEventListener('mousedown', startDragKeyEditModal);
 
     // 重置背景显示模式为完整背景
     keyBgViewMode = 'full';
@@ -1471,16 +1472,6 @@ function stopDragKeyEditModal() {
 }
 
 function closeKeyEdit() {
-    // 移除颜色选择器的事件监听
-    document.getElementById('edit-key-active-color').removeEventListener('input', handleKeyActiveColorPreview);
-    document.getElementById('edit-key-inactive-color').removeEventListener('input', handleKeyInactiveColorPreview);
-
-    // 移除拖动事件监听
-    const dragHandle = document.getElementById('key-edit-drag-handle');
-    if (dragHandle) {
-        dragHandle.removeEventListener('mousedown', startDragKeyEditModal);
-    }
-
     // 清除按键背景拖拽状态
     isDraggingKeyBg = false;
     draggedKeyBg = null;
