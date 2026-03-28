@@ -2069,7 +2069,7 @@ function cleanKeyForSave(key) {
 function buildCurrentConfigObject() {
     const cleanedKeys = keys.map(cleanKeyForSave);
     return {
-        version: 2,
+        version: 3,
         keys: cleanedKeys,
         config: CONFIG,
         bgImage: bgImage ? document.getElementById('bg-image').src : '',
@@ -2237,16 +2237,27 @@ function loadConfig(event) {
     reader.readAsText(file);
 }
 
+/** 低于此版本的浏览器缓存会被忽略，避免旧版默认布局覆盖仓库 configs/default.json。 */
+const PERSISTED_CONFIG_MIN_VERSION = 3;
+
 function loadSavedConfig() {
     const saved = localStorage.getItem('dotaKeyboardConfig');
-    if (saved) {
-        try {
-            const config = JSON.parse(saved);
-            applyConfig(config);
-            console.log('已自动加载保存的配置');
-        } catch (e) {
-            console.log('加载保存的配置失败:', e);
+    if (!saved) return;
+    try {
+        const config = JSON.parse(saved);
+        if (typeof config.version !== 'number' || config.version < PERSISTED_CONFIG_MIN_VERSION) {
+            localStorage.removeItem('dotaKeyboardConfig');
+            console.log(
+                '已忽略旧版本地缓存（version < ' +
+                    PERSISTED_CONFIG_MIN_VERSION +
+                    '），当前以 configs/default.json 为准。若需保留旧布局请用「导出 JSON」备份后再升级。'
+            );
+            return;
         }
+        applyConfig(config);
+        console.log('已自动加载保存的配置');
+    } catch (e) {
+        console.log('加载保存的配置失败:', e);
     }
 }
 
@@ -2410,7 +2421,7 @@ function showConfigLocation() {
 
 2. 浏览器本地缓存
    - 每次成功保存到项目或导出时，会同步写入当前浏览器的 localStorage
-   - 同一浏览器再次打开页面会自动尝试恢复上次配置
+   - 同一浏览器再次打开页面会自动尝试恢复上次配置（配置版本 ≥3；更旧的缓存会被丢弃以免盖住新版默认布局）
 
 3. 导出 / 导入文件
    - 「导出 JSON」：下载到本机任意位置，便于备份或发给别人
