@@ -7,6 +7,8 @@ Behavior:
 1) Capture system-wide key events (works when the browser is not focused).
 2) Push events to the web UI over WebSocket (ws://localhost:8765).
 3) Serve the overlay static files and project config API on HTTP (http://127.0.0.1:8080).
+   On Windows, HTTP_PORT is reclaimed from other listeners at startup unless
+   OVERLAY_SKIP_HTTP_PORT_RECLAIM is set to 1/true/yes.
 
 Design goals ("safe bootstrap"):
 - Self-check: install missing dependencies and restart the process.
@@ -483,6 +485,18 @@ def start_http_server_background() -> None:
     handler_cls = _build_overlay_http_handler(SCRIPT_DIR, CONFIGS_DIR)
 
     def run() -> None:
+        # Free HTTP_PORT before bind so old one-off static servers (e.g. legacy bat + PowerShell)
+        # do not keep 8080; avoids POST /api/config/save -> 404 for users.
+        skip_reclaim = os.environ.get("OVERLAY_SKIP_HTTP_PORT_RECLAIM", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if platform.system().lower() == "windows" and not skip_reclaim:
+            log(f"释放端口 {HTTP_PORT}（避免旧版仅静态页进程占用，确保配置 API 可用）...")
+            kill_process_using_port(HTTP_PORT)
+            time.sleep(0.55)
+
         for attempt in range(2):
             try:
                 httpd = ThreadingHTTPServer((HTTP_HOST, HTTP_PORT), handler_cls)
