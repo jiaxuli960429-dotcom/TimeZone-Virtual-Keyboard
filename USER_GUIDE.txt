@@ -7,13 +7,13 @@
 - index.html          : 主程序文件
 - keyboard.js         : 键盘逻辑代码
 - key_server.py       : 全局按键捕获服务（解决浏览器失焦问题）
-- 启动键盘显示.bat    : 一键启动脚本
-- 使用说明.txt        : 本说明文件
+- start-keyboard.bat  : 一键启动脚本
+- USER_GUIDE.txt      : 本说明文件
 
 
 🚀 快速开始
 -----------
-方法1: 双击运行"启动键盘显示.bat"
+方法1: 双击运行 start-keyboard.bat
        - 会自动启动按键捕获服务和浏览器
        - OBS中添加浏览器源，URL填: http://localhost:8080
 

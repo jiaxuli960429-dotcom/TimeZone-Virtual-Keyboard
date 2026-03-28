@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DOTA 键盘按键捕获服务
+Global keyboard capture service for the DOTA / streaming overlay.
 
-作用：
-1) 在系统层捕获全局键盘事件（即浏览器失焦也可捕获）。
-2) 通过 WebSocket 推送给前端页面（ws://localhost:8765）。
+Behavior:
+1) Capture system-wide key events (works when the browser is not focused).
+2) Push events to the web UI over WebSocket (ws://localhost:8765).
 
-设计目标（超安全版本）：
-- 启动自检：缺失依赖时自动安装并重启。
-- 兼容优先：尽量减少对第三方库内部路径的依赖。
-- 可恢复：网络/客户端异常不影响主服务持续运行。
+Design goals ("safe bootstrap"):
+- Self-check: install missing dependencies and restart the process.
+- Prefer stable public APIs over private internals of third-party libs.
+- Resilient: network/client issues must not take down the main service.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import threading
 import time
 from typing import Any
 
-# ==================== 常量配置 ====================
+# --- Configuration ---
 WS_HOST = "localhost"
 WS_PORT = 8765
 PIP_MIRROR = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -38,14 +38,14 @@ QUEUE_POLL_INTERVAL_SEC = 0.01
 
 
 def log(message: str) -> None:
-    """统一日志输出格式，便于排查问题。"""
+    """Print a timestamped line (user-facing / ops; keep messages in Chinese)."""
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] {message}")
 
 
-# ==================== 启动前依赖检查 ====================
+# --- Dependency bootstrap (before heavy imports) ---
 def ensure_dependencies() -> None:
-    """检查依赖，缺失时自动安装并重启当前进程。"""
+    """Install missing packages via pip, then execv-restart this process."""
     missing = [pkg for pkg in REQUIRED_PACKAGES if importlib.util.find_spec(pkg) is None]
     if not missing:
         return
@@ -56,10 +56,10 @@ def ensure_dependencies() -> None:
     install_cmd_base = [sys.executable, "-m", "pip", "install", *missing]
 
     try:
-        # 优先使用镜像源（对国内网络更友好）
+        # Tsinghua mirror first (better for CN networks)
         subprocess.check_call([*install_cmd_base, "-i", PIP_MIRROR])
     except subprocess.CalledProcessError:
-        # 兜底回退到默认源，避免镜像不可用导致启动失败
+        # Fall back to default PyPI if the mirror fails
         log("镜像源安装失败，尝试使用默认 PyPI 源...")
         subprocess.check_call(install_cmd_base)
 
@@ -69,18 +69,16 @@ def ensure_dependencies() -> None:
 
 ensure_dependencies()
 
-# 依赖可用后再导入
 from pynput import keyboard
 import websockets
 
-
-# ==================== 全局状态 ====================
+# --- Runtime state ---
 key_event_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
 connected_clients: set[Any] = set()
 
 
 def kill_process_using_port(port: int) -> None:
-    """Windows 下尝试清理占用端口的进程，避免服务重复启动失败。"""
+    """Windows: kill processes listening on `port` (excluding current PID)."""
     if platform.system().lower() != "windows":
         return
 
@@ -113,7 +111,7 @@ def kill_process_using_port(port: int) -> None:
 
 
 def _is_address_in_use(exc: OSError) -> bool:
-    """判断是否为「端口已被占用」类错误（跨平台常见取值）。"""
+    """True if `exc` indicates the listen address/port is already in use."""
     if exc.errno == getattr(errno, "EADDRINUSE", None):
         return True
     # Windows: WSAEADDRINUSE
@@ -122,11 +120,11 @@ def _is_address_in_use(exc: OSError) -> bool:
     return False
 
 
-# ==================== 按键映射 ====================
+# --- Key code mapping (pynput -> browser KeyboardEvent.code) ---
 def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
-    """将 pynput 按键对象转换为浏览器标准 KeyboardEvent.code。"""
+    """Map a pynput key to the DOM `KeyboardEvent.code` string."""
     key_map = {
-        # 字母键
+        # Letters
         "a": "KeyA", "b": "KeyB", "c": "KeyC", "d": "KeyD",
         "e": "KeyE", "f": "KeyF", "g": "KeyG", "h": "KeyH",
         "i": "KeyI", "j": "KeyJ", "k": "KeyK", "l": "KeyL",
@@ -134,18 +132,18 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
         "q": "KeyQ", "r": "KeyR", "s": "KeyS", "t": "KeyT",
         "u": "KeyU", "v": "KeyV", "w": "KeyW", "x": "KeyX",
         "y": "KeyY", "z": "KeyZ",
-        # 数字键
+        # Digits
         "0": "Digit0", "1": "Digit1", "2": "Digit2", "3": "Digit3",
         "4": "Digit4", "5": "Digit5", "6": "Digit6", "7": "Digit7",
         "8": "Digit8", "9": "Digit9",
-        # 功能键
+        # Function keys
         "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
         "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
         "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
-        # 方向键
+        # Arrows
         "up": "ArrowUp", "down": "ArrowDown",
         "left": "ArrowLeft", "right": "ArrowRight",
-        # 控制键
+        # Editing / navigation
         "space": "Space",
         "enter": "Enter",
         "tab": "Tab",
@@ -155,7 +153,7 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
         "home": "Home", "end": "End",
         "pageup": "PageUp", "pagedown": "PageDown",
         "insert": "Insert",
-        # 符号键
+        # Punctuation / symbols
         ".": "Period",
         ",": "Comma",
         "/": "Slash",
@@ -203,18 +201,18 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
 
 
 def on_press(key: keyboard.Key | keyboard.KeyCode) -> None:
-    """按下回调：推入消息队列。"""
+    """pynput callback: enqueue a press event."""
     key_event_queue.put(("press", get_key_code(key)))
 
 
 def on_release(key: keyboard.Key | keyboard.KeyCode) -> None:
-    """释放回调：推入消息队列。"""
+    """pynput callback: enqueue a release event."""
     key_event_queue.put(("release", get_key_code(key)))
 
 
-# ==================== WebSocket 逻辑 ====================
+# --- WebSocket server ---
 async def broadcast_to_clients(message: str) -> None:
-    """广播到所有客户端，自动剔除断开连接。"""
+    """Send `message` to every connected client; drop broken connections."""
     if not connected_clients:
         return
 
@@ -231,7 +229,7 @@ async def broadcast_to_clients(message: str) -> None:
 
 
 async def handle_client(websocket: Any) -> None:
-    """处理客户端连接与心跳消息。"""
+    """One client connection; handle JSON ping/pong."""
     log(f"客户端已连接: {websocket.remote_address}")
     connected_clients.add(websocket)
 
@@ -252,7 +250,7 @@ async def handle_client(websocket: Any) -> None:
 
 
 async def process_key_events() -> None:
-    """持续处理键盘事件队列并广播到前端。"""
+    """Drain the thread-safe queue and broadcast key JSON to clients."""
     while True:
         try:
             event_type, code = key_event_queue.get_nowait()
@@ -271,7 +269,7 @@ async def process_key_events() -> None:
 
 
 async def start_server() -> None:
-    """启动 WebSocket 服务与事件处理协程。"""
+    """Run the WebSocket server until cancelled; retry once if port is busy."""
     log("=" * 50)
     log("DOTA Keyboard Capture Service")
     log("=" * 50)
@@ -290,12 +288,12 @@ async def start_server() -> None:
             ping_interval=20,
             ping_timeout=10,
         ):
-            await asyncio.Future()  # run forever
+            await asyncio.Future()  # block until cancelled
 
     try:
         await listen_forever()
     except OSError as exc:
-        # 仅在绑定失败时再清理端口，避免每次启动都 taskkill 占用该端口的进程
+        # Only kill port holders after a failed bind, not on every startup
         if not _is_address_in_use(exc):
             raise
         log(f"端口 {WS_PORT} 已被占用，尝试结束占用进程后重试一次...")
@@ -305,13 +303,13 @@ async def start_server() -> None:
 
 
 def start_keyboard_listener() -> None:
-    """后台线程：启动全局键盘监听。"""
+    """Blocking call: run pynput listener in this thread (used from a daemon thread)."""
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         listener.join()
 
 
 def main() -> None:
-    """程序入口。"""
+    """Entry point: keyboard thread + asyncio WebSocket server."""
     keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
     keyboard_thread.start()
 
@@ -321,7 +319,6 @@ def main() -> None:
         log("服务已停止")
         sys.exit(0)
     except OSError as exc:
-        # 更明确地提示端口占用类问题
         log(f"网络启动失败（可能端口占用）: {exc}")
         input("按 Enter 退出")
     except Exception as exc:

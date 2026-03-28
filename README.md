@@ -47,7 +47,7 @@
    ```
 
 3. 启动应用：
-   - 双击 `启动键盘显示.bat` 文件
+   - 双击 `start-keyboard.bat` 文件
    - 或直接在浏览器中打开 `index.html` 文件
 
 ### 使用说明
@@ -76,8 +76,8 @@ TimeZone-Virtual-Keyboard/
 ├── index.html          # 主页面
 ├── keyboard.js         # 核心逻辑
 ├── key_server.py       # WebSocket 服务器
-├── 启动键盘显示.bat    # 启动脚本
-├── 使用说明.txt        # 使用说明
+├── start-keyboard.bat  # 启动脚本
+├── USER_GUIDE.txt      # 使用说明（中文）
 ├── LICENSE             # MIT 许可证全文
 ├── .gitignore          # Git 忽略文件
 └── README.md           # 项目说明

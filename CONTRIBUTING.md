@@ -1,42 +1,43 @@
-# 贡献与仓库规范
+# Contributing
 
-感谢你为 **TimeZone Virtual Keyboard** 做贡献！
+Thanks for helping improve **TimeZone Virtual Keyboard**.
 
-## 1. 分支与提交建议
-- 建议每个功能/修复使用单独分支。
-- 提交信息尽量清晰，推荐格式：
-  - `feat: 新增功能描述`
-  - `fix: 修复问题描述`
-  - `refactor: 重构点描述`
-  - `docs: 文档更新描述`
+## 1. Branches and commits
+- Prefer one branch per feature or fix.
+- Use clear commit messages, for example:
+  - `feat: ...`
+  - `fix: ...`
+  - `refactor: ...`
+  - `docs: ...`
 
-示例：
+Examples:
 - `refactor: simplify websocket keyboard server flow`
 - `docs: add contributing conventions`
 
-## 2. 代码风格
-- 注释优先使用中文，描述“为什么这么做”，避免只写“做了什么”。
-- 变量命名尽量语义化，避免 `a`、`tmp` 这类模糊命名。
-- 单个函数尽量只做一件事，超过 80~100 行建议拆分。
-- 异常处理要尽量具体，避免不加区分地吞掉所有异常。
+## 2. Code style
+- **Developer-facing** comments and docstrings: **English** (explain *why*, not only *what*).
+- **User-facing** UI strings (web, alerts, logs meant for streamers/operators): **Chinese (Simplified)** where this project already uses it.
+- Prefer meaningful names; avoid `a`, `tmp`, etc.
+- Keep functions focused; consider splitting past ~80–100 lines.
+- Handle exceptions as specifically as practical; avoid blanket silent catches.
 
-## 3. 前端改动建议
-- 与现有 UI 文案保持一致（中英混合可以，但要统一风格）。
-- 新增控件时，确保在 `index.html` 和 `keyboard.js` 中的 id/事件对应一致。
-- 保持 OBS 场景兼容（推荐 1200x400 画布）。
+## 3. Frontend changes
+- Match existing UI wording and layout patterns.
+- When adding controls, keep `id`s and event handlers aligned between `index.html` and `keyboard.js`.
+- Keep OBS browser-source compatibility in mind (e.g. 1200×400 canvas).
 
-## 4. Python 服务改动建议
-- 优先保持跨平台行为（Windows 为主，其他平台尽量不崩溃）。
-- WebSocket 协议字段变更时请同步前端处理逻辑。
-- 启动逻辑改动后请至少做一次本地语法检查。
+## 4. Python service (`key_server.py`)
+- Prefer not to break non-Windows platforms (Windows is the main target).
+- If you change the WebSocket JSON schema, update the frontend handler accordingly.
+- After changing startup logic, run at least `python -m py_compile key_server.py`.
 
-## 5. 合并前自检（最小清单）
+## 5. Pre-merge checklist (minimal)
 1. `python -m py_compile key_server.py`
-2. 浏览器打开页面后，检查按键显示是否正常。
-3. 保存/加载配置功能可用。
+2. Open the page in a browser and verify key highlighting.
+3. Save / load config still works.
 
-## 6. PR 描述建议
-- 变更背景（为什么改）
-- 关键改动点（改了什么）
-- 风险与回滚（有无兼容性风险）
-- 验证方式（运行了哪些命令/手工测试）
+## 6. Pull request description
+- Motivation (why the change)
+- What changed (high level)
+- Risks / rollback / compatibility
+- How you tested (commands + manual steps)
