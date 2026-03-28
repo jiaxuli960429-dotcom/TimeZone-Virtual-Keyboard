@@ -333,6 +333,22 @@
             font-weight: 700;
         }
 
+        .obs-mode-badge {
+            font-size: 11px;
+            line-height: 1;
+            border-radius: 999px;
+            padding: 4px 9px;
+            border: 1px solid #ced8eb;
+            background: #f7faff;
+            color: #4e627f;
+        }
+
+        .obs-mode-badge.preview {
+            border-color: #ffd4df;
+            background: #fff3f7;
+            color: #b14969;
+        }
+
         .obs-flow-row {
             margin-top: 8px;
             display: flex;
@@ -377,6 +393,70 @@
             color: #b5395f;
             border-color: #ffccda;
             background: #fff1f6;
+        }
+
+        .config-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .config-list-meta {
+            font-size: 12px;
+            color: var(--text-sub);
+        }
+
+        .config-repo-list {
+            margin-top: 8px;
+            max-height: 240px;
+            overflow: auto;
+            border: 1px solid #dde4ef;
+            border-radius: 10px;
+            background: #fff;
+            padding: 8px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .config-repo-empty {
+            font-size: 12px;
+            color: var(--text-sub);
+            padding: 8px;
+        }
+
+        .config-repo-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #e6ebf3;
+            border-radius: 8px;
+            padding: 8px;
+            background: #fafcff;
+        }
+
+        .config-repo-item.is-previewing {
+            border-color: #ffcad8;
+            background: #fff4f8;
+            box-shadow: inset 0 0 0 1px rgba(236, 120, 158, 0.15);
+        }
+
+        .config-repo-name {
+            font-size: 13px;
+            color: #2e3b50;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .config-repo-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .control-group {
@@ -847,6 +927,7 @@
                 <div class="obs-fixed-card">
                     <div class="obs-flow-head">
                         <label>OBS 链接生成</label>
+                        <span id="obs-mode-badge" class="obs-mode-badge">编辑态</span>
                     </div>
                     <div class="obs-flow-row">
                         <span class="obs-label">配置名</span>
@@ -861,7 +942,10 @@
                         <input type="text" id="obs-overlay-url" readonly value="">
                     </div>
                     <div id="obs-flow-status" class="obs-flow-status">
-                        等待操作：先确认配置名（默认 obs），点「一键保存并复制 OBS 地址」，然后到 OBS 粘贴即可。若复制失败，可手动复制上方链接。
+                        等待操作：编辑态下点击主按钮会「保存并复制」；预览态下只会「复制地址」不保存。若复制失败，可手动复制上方链接。
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn" data-click="switchConsoleTab:config">📚 打开配置仓库（保存/加载/删除）</button>
                     </div>
                     <p class="obs-url-hint" style="margin-top:8px; font-size:12px; color:var(--text-sub); line-height:1.5;">
                         注意：OBS 与桌面浏览器不共享本地缓存，请始终使用这里生成的 <code style="font-size:11px;">/overlay?config=...</code> 地址。
@@ -944,7 +1028,7 @@
                 </div>
 
                 <div class="console-tab-section" id="tab-config">
-                <div class="console-section-title">配置与导入导出</div>
+                <div class="console-section-title">配置仓库（高级管理）</div>
                 <div class="controls-grid">
                     <div class="control-group">
                         <label>保存到项目目录 (configs/*.json，需通过 http://localhost:8080 打开页面):</label>
@@ -956,12 +1040,14 @@
                     </div>
 
                     <div class="control-group">
-                        <label>读取已保存的配置:</label>
-                        <select id="saved-config-select" style="width:100%; margin-top:6px;" data-change="adoptSavedConfigAsObsProfile"></select>
-                        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                            <button class="btn" data-click="loadSelectedProjectConfig">📂 加载所选</button>
-                            <button class="btn btn-danger" data-click="deleteSelectedProjectConfig">🗑️ 删除所选</button>
+                        <div class="config-list-header">
+                            <label style="margin:0;">项目配置列表（可直接查看/删除）:</label>
+                            <span class="config-list-meta" id="saved-config-count">共 0 项</span>
                         </div>
+                        <div id="saved-config-list" class="config-repo-list">
+                            <div class="config-repo-empty">正在读取配置列表...</div>
+                        </div>
+                        <select id="saved-config-select" style="display:none;" data-change="adoptSavedConfigAsObsProfile"></select>
                     </div>
 
                     <div class="control-group full-span">

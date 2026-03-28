@@ -71,6 +71,7 @@ const RESIZE_EDGE_THRESHOLD = 6; // 边缘检测阈值
 let obsFlowPreviewBaseConfig = null;
 let obsFlowPreviewBaseProfileName = '';
 let obsFlowPreviewActiveName = '';
+let savedConfigNamesCache = [];
 
 // 辅助对齐线相关
 let snapLines = []; // 当前显示的对齐线
@@ -505,15 +506,51 @@ function setObsFlowStatus(message, tone = '') {
     }
 }
 
+function updateSavedConfigCountText(names) {
+    const count = byId('saved-config-count');
+    if (!count) return;
+    const n = Array.isArray(names) ? names.length : 0;
+    count.textContent = '共 ' + n + ' 项';
+}
+
+function isObsPreviewing() {
+    return !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+}
+
+function syncObsProfileNameEverywhere(name) {
+    const safeName = String(name || '').trim();
+    const input = byId('obs-profile-name');
+    if (input) input.value = safeName;
+
+    const quick = byId('obs-profile-quick-select');
+    if (quick) {
+        const has = Array.from(quick.options || []).some((o) => o.value === safeName);
+        quick.value = has ? safeName : '';
+    }
+
+    const sel = byId('saved-config-select');
+    if (sel) {
+        const has = Array.from(sel.options || []).some((o) => o.value === safeName);
+        sel.value = has ? safeName : '';
+    }
+    updateObsOverlayUrlField();
+}
+
 function updateObsPreviewUiState() {
     const btn = byId('obs-back-to-current-btn');
-    const previewing = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+    const previewing = isObsPreviewing();
     if (btn) btn.disabled = !previewing;
 
     const actionBtn = byId('obs-primary-action-btn');
     if (actionBtn) {
         actionBtn.textContent = previewing ? '🔗 复制 OBS 地址' : '⚡ 保存并复制 OBS 地址';
         actionBtn.classList.toggle('btn-primary', !previewing);
+    }
+
+    const modeBadge = byId('obs-mode-badge');
+    if (modeBadge) {
+        modeBadge.textContent = previewing ? ('预览态：' + obsFlowPreviewActiveName) : '编辑态';
+        modeBadge.classList.toggle('preview', previewing);
     }
 }
 
@@ -548,6 +585,9 @@ function updateObsOverlayUrlField() {
 }
 
 function handleObsProfileInput() {
+    if (isObsPreviewing()) {
+        setObsFlowStatus('你正在预览已保存配置。修改配置名不会退出预览；可点「回到当前编辑态」。');
+    }
     updateObsOverlayUrlField();
 }
 
@@ -556,7 +596,14 @@ async function useObsQuickProfile() {
     const input = byId('obs-profile-name');
     if (!quick || !input) return;
     const name = String(quick.value || '').trim();
-    if (!name) return;
+    if (!name) {
+        if (isObsPreviewing()) {
+            restoreObsCurrentConfig();
+        } else {
+            setObsFlowStatus('当前在编辑态。若要预览，请从下拉框选择一个已保存配置。');
+        }
+        return;
+    }
 
     if (!obsFlowPreviewBaseConfig) {
         obsFlowPreviewBaseConfig = buildCurrentConfigObject();
@@ -572,14 +619,15 @@ async function useObsQuickProfile() {
         return;
     }
 
-    input.value = name;
+    syncObsProfileNameEverywhere(name);
     obsFlowPreviewActiveName = name;
-    updateObsOverlayUrlField();
+    syncObsQuickProfileSelect();
     updateObsPreviewUiState();
     setObsFlowStatus(
         '正在预览 configs/' + name + '.json。可直接一键复制 OBS 地址；若要回到刚才编辑中的样子，点「回到当前编辑态」。',
         'success'
     );
+    renderSavedConfigRepoList(savedConfigNamesCache);
 }
 
 function restoreObsCurrentConfig() {
@@ -588,19 +636,14 @@ function restoreObsCurrentConfig() {
         return;
     }
     applyConfig(obsFlowPreviewBaseConfig);
-    const input = byId('obs-profile-name');
-    if (input) {
-        input.value = obsFlowPreviewBaseProfileName;
-    }
+    syncObsProfileNameEverywhere(obsFlowPreviewBaseProfileName);
     obsFlowPreviewBaseConfig = null;
     obsFlowPreviewBaseProfileName = '';
     obsFlowPreviewActiveName = '';
-    const quick = byId('obs-profile-quick-select');
-    if (quick) quick.value = '';
-    updateObsOverlayUrlField();
     syncObsQuickProfileSelect();
     updateObsPreviewUiState();
     setObsFlowStatus('已回到切换前的当前编辑态（未保存）。');
+    renderSavedConfigRepoList(savedConfigNamesCache);
 }
 
 function syncObsQuickProfileSelect() {
@@ -635,6 +678,132 @@ function syncObsQuickProfileSelect() {
     updateObsPreviewUiState();
 }
 
+async function previewProjectConfigByName(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return;
+    const quick = byId('obs-profile-quick-select');
+    if (quick) quick.value = safeName;
+    await useObsQuickProfile();
+}
+
+async function loadProjectConfigByName(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return false;
+    const sel = byId('saved-config-select');
+    if (!sel) return false;
+    sel.value = safeName;
+    const ok = await networkModule.loadSelectedProjectConfig({
+        selectEl: sel,
+        applyConfig,
+        suppressSuccessAlert: true
+    });
+    if (!ok) return false;
+
+    obsFlowPreviewBaseConfig = null;
+    obsFlowPreviewBaseProfileName = '';
+    obsFlowPreviewActiveName = '';
+    const quick = byId('obs-profile-quick-select');
+    if (quick) quick.value = '';
+
+    syncObsProfileNameEverywhere(safeName);
+    syncObsQuickProfileSelect();
+    updateObsPreviewUiState();
+    setObsFlowStatus('已加载 configs/' + safeName + '.json 到当前编辑态。', 'success');
+    return true;
+}
+
+async function deleteProjectConfigByName(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return false;
+    const sel = byId('saved-config-select');
+    if (!sel) return false;
+    sel.value = safeName;
+    const ok = await networkModule.deleteSelectedProjectConfig({
+        selectEl: sel,
+        onDeleted: refreshSavedConfigSelect
+    });
+    if (!ok) return false;
+    if (obsFlowPreviewActiveName === safeName) {
+        restoreObsCurrentConfig();
+    }
+    setObsFlowStatus('已删除配置：configs/' + safeName + '.json');
+    return true;
+}
+
+function renderSavedConfigRepoList(names) {
+    savedConfigNamesCache = Array.isArray(names) ? names.slice() : [];
+    updateSavedConfigCountText(savedConfigNamesCache);
+
+    const list = byId('saved-config-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!savedConfigNamesCache.length) {
+        const empty = document.createElement('div');
+        empty.className = 'config-repo-empty';
+        empty.textContent = '暂无项目配置，先在左侧输入名称后点击「保存到项目」。';
+        list.appendChild(empty);
+        return;
+    }
+
+    savedConfigNamesCache.forEach((name) => {
+        const isPreviewingThis = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName === name);
+        const item = document.createElement('div');
+        item.className = 'config-repo-item';
+        if (isPreviewingThis) item.classList.add('is-previewing');
+
+        const title = document.createElement('div');
+        title.className = 'config-repo-name';
+        title.textContent = isPreviewingThis ? name + '（正在预览）' : name;
+        title.title = name;
+        item.appendChild(title);
+
+        const actions = document.createElement('div');
+        actions.className = 'config-repo-actions';
+
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.className = isPreviewingThis ? 'btn btn-danger' : 'btn';
+        previewBtn.textContent = isPreviewingThis ? '↩ 结束阅览' : '👁 预览';
+        previewBtn.addEventListener('click', () => {
+            const previewingNow = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName === name);
+            if (previewingNow) {
+                restoreObsCurrentConfig();
+            } else {
+                previewProjectConfigByName(name).then(() => {
+                    renderSavedConfigRepoList(savedConfigNamesCache);
+                });
+            }
+        });
+        actions.appendChild(previewBtn);
+
+        const loadBtn = document.createElement('button');
+        loadBtn.type = 'button';
+        loadBtn.className = 'btn btn-primary';
+        loadBtn.textContent = '📂 加载为当前';
+        loadBtn.addEventListener('click', () => {
+            loadProjectConfigByName(name).then(() => {
+                renderSavedConfigRepoList(savedConfigNamesCache);
+            });
+        });
+        actions.appendChild(loadBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn btn-danger';
+        delBtn.textContent = '🗑 删除';
+        delBtn.addEventListener('click', () => {
+            deleteProjectConfigByName(name).then(() => {
+                renderSavedConfigRepoList(savedConfigNamesCache);
+            });
+        });
+        actions.appendChild(delBtn);
+
+        item.appendChild(actions);
+        list.appendChild(item);
+    });
+}
+
 async function copyObsOverlayUrl(showNotice = true) {
     const url = getOverlayUrl();
     try {
@@ -653,11 +822,7 @@ async function copyObsOverlayUrl(showNotice = true) {
 
 function adoptSavedConfigAsObsProfile() {
     const sel = byId('saved-config-select');
-    const input = byId('obs-profile-name');
-    if (sel && input && sel.value) {
-        input.value = sel.value;
-    }
-    updateObsOverlayUrlField();
+    if (sel && sel.value) syncObsProfileNameEverywhere(sel.value);
     syncObsQuickProfileSelect();
     if (sel && sel.value) {
         setObsFlowStatus('已把「已保存配置」同步为 OBS 配置名：' + sel.value);
@@ -1623,7 +1788,8 @@ function buildCurrentConfigObject() {
 
 async function refreshSavedConfigSelect() {
     await networkModule.refreshSavedConfigSelect({
-        selectEl: byId('saved-config-select')
+        selectEl: byId('saved-config-select'),
+        onNames: renderSavedConfigRepoList
     });
     syncObsQuickProfileSelect();
     updateObsOverlayUrlField();
@@ -1648,10 +1814,14 @@ function exportConfigJsonFile() {
 
 async function loadSelectedProjectConfig() {
     const sel = byId('saved-config-select');
-    await networkModule.loadSelectedProjectConfig({
+    const ok = await networkModule.loadSelectedProjectConfig({
         selectEl: sel,
         applyConfig
     });
+    if (!ok) return false;
+    obsFlowPreviewBaseConfig = null;
+    obsFlowPreviewBaseProfileName = '';
+    obsFlowPreviewActiveName = '';
     if (sel && sel.value) {
         const input = byId('obs-profile-name');
         if (input) input.value = sel.value;
@@ -1659,13 +1829,16 @@ async function loadSelectedProjectConfig() {
     }
     updateObsOverlayUrlField();
     syncObsQuickProfileSelect();
+    updateObsPreviewUiState();
+    return true;
 }
 
 async function deleteSelectedProjectConfig() {
-    return networkModule.deleteSelectedProjectConfig({
+    const ok = await networkModule.deleteSelectedProjectConfig({
         selectEl: byId('saved-config-select'),
         onDeleted: refreshSavedConfigSelect
     });
+    return ok;
 }
 
 function loadConfig(event) {

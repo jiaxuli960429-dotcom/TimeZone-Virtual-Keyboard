@@ -21,6 +21,10 @@
                 o.textContent = name;
                 sel.appendChild(o);
             });
+            if (typeof opts.onNames === 'function') {
+                opts.onNames(names.slice());
+            }
+            return names;
         } catch (e) {
             console.warn('配置列表不可用（请用 start-keyboard.bat 启动，并以 http://localhost:8080 打开）', e);
             sel.innerHTML = '';
@@ -28,6 +32,10 @@
             opt0.value = '';
             opt0.textContent = '-- 需本机 HTTP 服务（见控制台说明）--';
             sel.appendChild(opt0);
+            if (typeof opts.onNames === 'function') {
+                opts.onNames([]);
+            }
+            return [];
         }
     }
 
@@ -86,24 +94,29 @@
     async function loadSelectedProjectConfig(options) {
         const opts = options || {};
         const sel = opts.selectEl;
+        const suppressSuccessAlert = !!opts.suppressSuccessAlert;
         const name = sel && sel.value;
         if (!name) {
             alert('请先从下拉框选择一个配置');
-            return;
+            return false;
         }
         try {
             const r = await fetch('/api/config?name=' + encodeURIComponent(name));
             if (!r.ok) {
                 alert('加载失败 (HTTP ' + r.status + ')');
-                return;
+                return false;
             }
             const config = await r.json();
             opts.applyConfig(config);
             localStorage.setItem('dotaKeyboardConfig', JSON.stringify(config));
-            alert('已从项目 configs/ 加载：' + name);
+            if (!suppressSuccessAlert) {
+                alert('已从项目 configs/ 加载：' + name);
+            }
+            return true;
         } catch (e) {
             console.error(e);
             alert('加载失败（请确认本机服务已启动）');
+            return false;
         }
     }
 
@@ -113,9 +126,9 @@
         const name = sel && sel.value;
         if (!name) {
             alert('请先选择要删除的配置');
-            return;
+            return false;
         }
-        if (!confirm('确定删除项目内配置：configs/' + name + '.json ?')) return;
+        if (!confirm('确定删除项目内配置：configs/' + name + '.json ?')) return false;
         try {
             const r = await fetch('/api/config?name=' + encodeURIComponent(name), { method: 'DELETE' });
             let data = {};
@@ -126,11 +139,13 @@
             }
             if (!r.ok) {
                 alert(data.error || '删除失败');
-                return;
+                return false;
             }
             if (typeof opts.onDeleted === 'function') opts.onDeleted();
+            return true;
         } catch (e) {
             alert('删除失败');
+            return false;
         }
     }
 
