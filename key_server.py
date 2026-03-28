@@ -120,82 +120,83 @@ def _is_address_in_use(exc: OSError) -> bool:
     return False
 
 
-# --- Key code mapping (pynput -> browser KeyboardEvent.code) ---
+# --- Key code mapping (pynput -> browser KeyboardEvent.code); module-level to avoid per-event dict alloc ---
+_DOM_KEY_MAP: dict[str, str] = {
+    # Letters
+    "a": "KeyA", "b": "KeyB", "c": "KeyC", "d": "KeyD",
+    "e": "KeyE", "f": "KeyF", "g": "KeyG", "h": "KeyH",
+    "i": "KeyI", "j": "KeyJ", "k": "KeyK", "l": "KeyL",
+    "m": "KeyM", "n": "KeyN", "o": "KeyO", "p": "KeyP",
+    "q": "KeyQ", "r": "KeyR", "s": "KeyS", "t": "KeyT",
+    "u": "KeyU", "v": "KeyV", "w": "KeyW", "x": "KeyX",
+    "y": "KeyY", "z": "KeyZ",
+    # Digits
+    "0": "Digit0", "1": "Digit1", "2": "Digit2", "3": "Digit3",
+    "4": "Digit4", "5": "Digit5", "6": "Digit6", "7": "Digit7",
+    "8": "Digit8", "9": "Digit9",
+    # Function keys
+    "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
+    "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
+    "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
+    # Arrows
+    "up": "ArrowUp", "down": "ArrowDown",
+    "left": "ArrowLeft", "right": "ArrowRight",
+    # Editing / navigation
+    "space": "Space",
+    "enter": "Enter",
+    "tab": "Tab",
+    "backspace": "Backspace",
+    "delete": "Delete",
+    "escape": "Escape",
+    "home": "Home", "end": "End",
+    "pageup": "PageUp", "pagedown": "PageDown",
+    "insert": "Insert",
+    # Punctuation / symbols
+    ".": "Period",
+    ",": "Comma",
+    "/": "Slash",
+    ";": "Semicolon",
+    "'": "Quote",
+    "[": "BracketLeft",
+    "]": "BracketRight",
+    "-": "Minus",
+    "=": "Equal",
+    "`": "Backquote",
+    "\\": "Backslash",
+}
+
+_DOM_MODIFIER_MAP: dict[str, str] = {
+    "shift": "ShiftLeft",
+    "shift_l": "ShiftLeft",
+    "shift_r": "ShiftRight",
+    "ctrl": "ControlLeft",
+    "ctrl_l": "ControlLeft",
+    "ctrl_r": "ControlRight",
+    "alt": "AltLeft",
+    "alt_l": "AltLeft",
+    "alt_r": "AltRight",
+    "alt_gr": "AltRight",
+    "cmd": "MetaLeft",
+    "cmd_l": "MetaLeft",
+    "cmd_r": "MetaRight",
+    "caps_lock": "CapsLock",
+    "esc": "Escape",
+}
+
+
 def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
     """Map a pynput key to the DOM `KeyboardEvent.code` string."""
-    key_map = {
-        # Letters
-        "a": "KeyA", "b": "KeyB", "c": "KeyC", "d": "KeyD",
-        "e": "KeyE", "f": "KeyF", "g": "KeyG", "h": "KeyH",
-        "i": "KeyI", "j": "KeyJ", "k": "KeyK", "l": "KeyL",
-        "m": "KeyM", "n": "KeyN", "o": "KeyO", "p": "KeyP",
-        "q": "KeyQ", "r": "KeyR", "s": "KeyS", "t": "KeyT",
-        "u": "KeyU", "v": "KeyV", "w": "KeyW", "x": "KeyX",
-        "y": "KeyY", "z": "KeyZ",
-        # Digits
-        "0": "Digit0", "1": "Digit1", "2": "Digit2", "3": "Digit3",
-        "4": "Digit4", "5": "Digit5", "6": "Digit6", "7": "Digit7",
-        "8": "Digit8", "9": "Digit9",
-        # Function keys
-        "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
-        "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
-        "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
-        # Arrows
-        "up": "ArrowUp", "down": "ArrowDown",
-        "left": "ArrowLeft", "right": "ArrowRight",
-        # Editing / navigation
-        "space": "Space",
-        "enter": "Enter",
-        "tab": "Tab",
-        "backspace": "Backspace",
-        "delete": "Delete",
-        "escape": "Escape",
-        "home": "Home", "end": "End",
-        "pageup": "PageUp", "pagedown": "PageDown",
-        "insert": "Insert",
-        # Punctuation / symbols
-        ".": "Period",
-        ",": "Comma",
-        "/": "Slash",
-        ";": "Semicolon",
-        "'": "Quote",
-        "[": "BracketLeft",
-        "]": "BracketRight",
-        "-": "Minus",
-        "=": "Equal",
-        "`": "Backquote",
-        "\\": "Backslash",
-    }
-
     if isinstance(key, keyboard.KeyCode) and key.char:
         char = key.char.lower()
-        if char in key_map:
-            return key_map[char]
+        if char in _DOM_KEY_MAP:
+            return _DOM_KEY_MAP[char]
 
     key_name = str(key).replace("Key.", "").lower()
 
-    modifier_map = {
-        "shift": "ShiftLeft",
-        "shift_l": "ShiftLeft",
-        "shift_r": "ShiftRight",
-        "ctrl": "ControlLeft",
-        "ctrl_l": "ControlLeft",
-        "ctrl_r": "ControlRight",
-        "alt": "AltLeft",
-        "alt_l": "AltLeft",
-        "alt_r": "AltRight",
-        "alt_gr": "AltRight",
-        "cmd": "MetaLeft",
-        "cmd_l": "MetaLeft",
-        "cmd_r": "MetaRight",
-        "caps_lock": "CapsLock",
-        "esc": "Escape",
-    }
-
-    if key_name in key_map:
-        return key_map[key_name]
-    if key_name in modifier_map:
-        return modifier_map[key_name]
+    if key_name in _DOM_KEY_MAP:
+        return _DOM_KEY_MAP[key_name]
+    if key_name in _DOM_MODIFIER_MAP:
+        return _DOM_MODIFIER_MAP[key_name]
 
     return str(key)
 
