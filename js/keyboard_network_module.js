@@ -34,10 +34,11 @@
     async function saveConfigToProject(options) {
         const opts = options || {};
         const nameInput = opts.nameInput;
+        const suppressSuccessAlert = !!opts.suppressSuccessAlert;
         const name = (nameInput && nameInput.value ? nameInput.value : '').trim();
         if (!name) {
             alert('请填写配置名称（将保存为项目内 configs/名称.json）');
-            return;
+            return false;
         }
         const config = opts.getCurrentConfig();
         const dataStr = JSON.stringify(config);
@@ -63,18 +64,22 @@
                             '请结束占用 8080 的进程后，只用新版 start-keyboard.bat 启动（由 key_server 同时提供网页与保存接口），\n' +
                             '并用 http://localhost:8080 打开本页（不要用本地磁盘 file:// 打开）。'
                     );
-                    return;
+                    return false;
                 }
                 alert(data.error || ('保存失败 (HTTP ' + r.status + ')'));
-                return;
+                return false;
             }
             localStorage.setItem('dotaKeyboardConfig', dataStr);
-            alert('已保存到项目 configs/ 目录：' + (data.name || name) + '.json');
+            if (!suppressSuccessAlert) {
+                alert('已保存到项目 configs/ 目录：' + (data.name || name) + '.json');
+            }
             if (nameInput) nameInput.value = '';
             if (typeof opts.onSaved === 'function') opts.onSaved();
+            return true;
         } catch (err) {
             console.error(err);
             alert('保存失败（请确认已用 http://localhost:8080 打开页面，且 key_server 正在运行）');
+            return false;
         }
     }
 
