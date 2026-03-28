@@ -77,7 +77,7 @@ TimeZone-Virtual-Keyboard/
 ├── index.html          # 主页面
 ├── keyboard.js         # 核心逻辑
 ├── key_server.py       # WebSocket + 本地 HTTP（页面与 configs API）
-├── configs/            # 用户保存的配置 JSON（默认不入库，见 .gitignore）
+├── configs/            # 配置目录：default.json 为内置默认布局（入库）；其余 *.json 为用户保存（默认忽略）
 ├── start-keyboard.bat  # 启动脚本
 ├── USER_GUIDE.txt      # 使用说明（中文）
 ├── LICENSE             # MIT 许可证全文

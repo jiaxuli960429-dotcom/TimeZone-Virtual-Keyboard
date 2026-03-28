@@ -80,63 +80,16 @@ let snapConfig = {
     distance: 10             // 辅助排列距离
 };
 
-// ==================== DOTA常用按键预设 ====================
-const DOTA_PRESET = [
-    { code: 'KeyQ', label: 'Q', x: 50, y: 50 },
-    { code: 'KeyW', label: 'W', x: 110, y: 50 },
-    { code: 'KeyE', label: 'E', x: 170, y: 50 },
-    { code: 'KeyR', label: 'R', x: 230, y: 50 },
-    { code: 'KeyT', label: 'T', x: 290, y: 50 },
-    { code: 'KeyA', label: 'A', x: 65, y: 110 },
-    { code: 'KeyS', label: 'S', x: 125, y: 110 },
-    { code: 'KeyD', label: 'D', x: 185, y: 110 },
-    { code: 'KeyF', label: 'F', x: 245, y: 110 },
-    { code: 'KeyG', label: 'G', x: 305, y: 110 },
-    { code: 'KeyZ', label: 'Z', x: 80, y: 170 },
-    { code: 'KeyX', label: 'X', x: 140, y: 170 },
-    { code: 'KeyC', label: 'C', x: 200, y: 170 },
-    { code: 'KeyV', label: 'V', x: 260, y: 170 },
-    { code: 'KeyB', label: 'B', x: 320, y: 170 },
-    { code: 'Digit1', label: '1', x: 400, y: 50 },
-    { code: 'Digit2', label: '2', x: 460, y: 50 },
-    { code: 'Digit3', label: '3', x: 520, y: 50 },
-    { code: 'Digit4', label: '4', x: 580, y: 50 },
-    { code: 'Digit5', label: '5', x: 640, y: 50 },
-    { code: 'Digit6', label: '6', x: 700, y: 50 },
-    { code: 'Space', label: 'Space', x: 400, y: 170, width: 250 },
-    { code: 'AltLeft', label: 'Alt', x: 400, y: 110, width: 60 },
-    { code: 'ShiftLeft', label: 'Shift', x: 20, y: 170, width: 80 },
-    { code: 'ControlLeft', label: 'Ctrl', x: 20, y: 230, width: 60 },
-    { code: 'ArrowUp', label: 'Up', x: 800, y: 50 },
-    { code: 'ArrowDown', label: 'Down', x: 800, y: 110 },
-    { code: 'ArrowLeft', label: 'Left', x: 740, y: 110 },
-    { code: 'ArrowRight', label: 'Right', x: 860, y: 110 },
-    { code: 'Escape', label: 'Esc', x: 20, y: 50, width: 60 },
-    { code: 'F1', label: 'F1', x: 1000, y: 50 },
-    { code: 'F2', label: 'F2', x: 1060, y: 50 },
-    { code: 'F3', label: 'F3', x: 1120, y: 50 },
-    { code: 'Tab', label: 'Tab', x: 20, y: 110, width: 70 },
-];
+/** Built-in layout shipped with the repo (same schema as saved profiles). */
+const BUILTIN_DEFAULT_CONFIG_URL = 'configs/default.json';
 
 // ==================== 初始化 ====================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     canvas = document.getElementById('keyboard-canvas');
     ctx = canvas.getContext('2d');
 
     canvas.width = CONFIG.canvasWidth;
     canvas.height = CONFIG.canvasHeight;
-
-    // 加载DOTA预设
-    keys = JSON.parse(JSON.stringify(DOTA_PRESET));
-
-    // 确保每个key都有width和height
-    keys.forEach(k => {
-        if (!k.width) k.width = CONFIG.keySize;
-        if (!k.height) k.height = CONFIG.keySize;
-    });
-
-    updateKeyList();
-    invalidateCanvas();
 
     // 键盘事件
     window.addEventListener('keydown', handleKeyDown);
@@ -165,16 +118,39 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('snap-center-controls').style.display = snapConfig.toCenter ? 'block' : 'none';
     document.getElementById('snap-assist-controls').style.display = snapConfig.toAssist ? 'block' : 'none';
 
-    setupKeyEditModalListeners();
+    await loadBuiltinDefaultConfig();
 
-    // 尝试加载保存的配置
     loadSavedConfig();
 
-    // 连接 WebSocket（全局按键捕获）
+    updateKeyList();
+    invalidateCanvas();
+
+    setupKeyEditModalListeners();
+
     connectWebSocket();
 
     refreshSavedConfigSelect();
 });
+
+/**
+ * Load repo default layout from configs/default.json (requires same-origin HTTP, e.g. localhost:8080).
+ */
+async function loadBuiltinDefaultConfig() {
+    try {
+        const r = await fetch(BUILTIN_DEFAULT_CONFIG_URL, { cache: 'no-store' });
+        if (!r.ok) {
+            throw new Error('HTTP ' + r.status);
+        }
+        const config = await r.json();
+        applyConfig(config);
+    } catch (e) {
+        console.warn(
+            '未加载 configs/default.json（请用 http://localhost:8080 打开页面；若用 file:// 打开则无内置布局）。将使用空按键列表。',
+            e
+        );
+        keys = [];
+    }
+}
 
 // ==================== 渲染 ====================
 function invalidateCanvas() {
@@ -2404,6 +2380,16 @@ function applyConfig(config) {
     if (bgNonKeyOpacityEl) bgNonKeyOpacityEl.value = Math.round((1 - bgNonKeyOpacity) * 100);
     if (bgNonKeyOpacityValEl) bgNonKeyOpacityValEl.textContent = Math.round((1 - bgNonKeyOpacity) * 100);
 
+    if (typeof canvas !== 'undefined' && canvas && CONFIG.canvasWidth && CONFIG.canvasHeight) {
+        canvas.width = CONFIG.canvasWidth;
+        canvas.height = CONFIG.canvasHeight;
+    }
+
+    keys.forEach((k) => {
+        if (!k.width) k.width = CONFIG.keySize;
+        if (!k.height) k.height = CONFIG.keySize;
+    });
+
     // 更新按键列表显示
     updateKeyList();
 
@@ -2416,6 +2402,7 @@ function showConfigLocation() {
     const message = `配置保存说明：
 
 1. 项目内配置（推荐）
+   - 内置默认键位来自仓库内 configs/default.json（可编辑该文件改默认布局）
    - 使用 start-keyboard.bat 启动后，用 http://localhost:8080 打开页面
    - 在设置里填写名称，点「保存到项目」→ 写入本仓库 configs/ 目录（*.json）
    - 下拉框「刷新列表」后可选中并「加载所选」

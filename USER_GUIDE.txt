@@ -7,6 +7,7 @@
 - index.html          : 主程序文件
 - keyboard.js         : 键盘逻辑代码
 - key_server.py       : 全局按键捕获服务（解决浏览器失焦问题）
+- configs/default.json: 首次打开时的默认键位布局（可改；勿删文件名）
 - start-keyboard.bat  : 一键启动脚本
 - USER_GUIDE.txt      : 本说明文件
 

@@ -3,6 +3,7 @@
 # ------------------------------
 *dota-keyboard-config.json
 configs/*.json
+!configs/default.json
 
 # ------------------------------
 # Logs / temp
