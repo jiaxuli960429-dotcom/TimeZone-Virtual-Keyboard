@@ -337,6 +337,16 @@ def _safe_config_file(configs_dir: str, safe_name: str) -> str | None:
     return candidate
 
 
+def _normalized_request_path(raw_path: str) -> str:
+    """Strip query/fragment, lowercase, drop trailing slash (except '/')."""
+    parsed = urllib.parse.urlparse(raw_path)
+    p = parsed.path or "/"
+    p = p.lower()
+    if len(p) > 1 and p.endswith("/"):
+        p = p.rstrip("/")
+    return p
+
+
 def _list_saved_config_names(configs_dir: str) -> list[str]:
     if not os.path.isdir(configs_dir):
         return []
@@ -379,7 +389,7 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
 
         def do_GET(self) -> None:
             parsed = urllib.parse.urlparse(self.path)
-            path = parsed.path
+            path = _normalized_request_path(self.path)
             if path == "/api/configs":
                 self._send_json(200, {"ok": True, "names": _list_saved_config_names(configs_dir)})
                 return
@@ -405,9 +415,10 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
             super().do_GET()
 
         def do_POST(self) -> None:
-            parsed = urllib.parse.urlparse(self.path)
-            if parsed.path != "/api/config/save":
-                self.send_error(404)
+            path = _normalized_request_path(self.path)
+            if path != "/api/config/save":
+                log(f"HTTP POST 未匹配路由: raw={self.path!r} normalized={path!r}")
+                self._send_json(404, {"ok": False, "error": "not found", "path": path})
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -442,8 +453,9 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
 
         def do_DELETE(self) -> None:
             parsed = urllib.parse.urlparse(self.path)
-            if parsed.path != "/api/config":
-                self.send_error(404)
+            path = _normalized_request_path(self.path)
+            if path != "/api/config":
+                self._send_json(404, {"ok": False, "error": "not found", "path": path})
                 return
             qs = urllib.parse.parse_qs(parsed.query)
             raw = (qs.get("name") or [None])[0]

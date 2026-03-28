@@ -2143,16 +2143,29 @@ async function saveConfigToProject() {
     const config = buildCurrentConfigObject();
     const dataStr = JSON.stringify(config);
     try {
-        const r = await fetch('/api/config/save', {
+        const url = new URL('/api/config/save', window.location.origin);
+        const r = await fetch(url.toString(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
             body: JSON.stringify({ name, config }),
         });
+        const text = await r.text();
         let data = {};
         try {
-            data = await r.json();
-        } catch (_) { /* empty */ }
+            data = text ? JSON.parse(text) : {};
+        } catch (_) {
+            data = {};
+        }
         if (!r.ok) {
+            if (r.status === 404) {
+                alert(
+                    '保存失败 (HTTP 404)：当前地址上的服务不认识 /api/config/save。\n\n' +
+                    '常见原因：8080 端口仍是旧的「仅静态文件」服务（例如以前 bat 起的 PowerShell）。\n' +
+                    '请结束占用 8080 的进程后，只用新版 start-keyboard.bat 启动（由 key_server 同时提供网页与保存接口），\n' +
+                    '并用 http://localhost:8080 打开本页（不要用本地磁盘 file:// 打开）。'
+                );
+                return;
+            }
             alert(data.error || ('保存失败 (HTTP ' + r.status + ')'));
             return;
         }
