@@ -646,12 +646,9 @@ function handleKeyDown(e) {
         return;
     }
 
-    // 如果 WebSocket 已连接，不处理本地键盘事件（避免重复）
+    // 如果 WebSocket 已连接，不处理本地键盘事件（避免与 WebSocket 重复）
+    // F2 显示/隐藏面板由下方专用 keydown 监听器统一处理（勿在此处再 toggle，否则会触发两次）
     if (wsConnected && useWebSocket) {
-        // 但保留 F2 功能键
-        if (e.key === 'F2') {
-            toggleControls();
-        }
         return;
     }
 
@@ -2313,8 +2310,8 @@ function handleWebSocketMessage(data) {
         } else {
             pressedKeys.delete(data.code);
         }
-    } else if (data.type === 'full_state') {
-        // 完整按键状态（连接时发送）
+    } else if (data.type === 'full_state' && Array.isArray(data.pressed_keys)) {
+        // 完整按键状态（服务端可扩展；当前 key_server 未发送）
         pressedKeys.clear();
         data.pressed_keys.forEach(code => pressedKeys.add(code));
     }
