@@ -32,6 +32,11 @@ let wsStatusFadeTimerId = null;
 
 let editingKey = null; // 当前正在编辑的按键
 let editingKeyBackup = null; // 编辑前的按键备份，用于取消操作
+/** 画布上单击选中的按键（Delete 删除）；与拖动分离：超过阈值才进入拖动 */
+let selectedKey = null;
+let dragCandidateKey = null;
+let dragCandidateFrom = { x: 0, y: 0 };
+const CLICK_DRAG_THRESHOLD_PX = 5;
 
 // ==================== 背景图片状态 ====================
 let bgImage = null; // 背景图片
@@ -64,6 +69,13 @@ const RESIZE_EDGE_THRESHOLD = 6; // 边缘检测阈值
 // 辅助对齐线相关
 let snapLines = []; // 当前显示的对齐线
 let isSnapping = false; // 是否正在吸附
+
+// 布局撤销 / 恢复（仅按键列表，不含全局背景等）
+const MAX_LAYOUT_HISTORY = 50;
+let layoutUndoStack = [];
+let layoutRedoStack = [];
+let pendingGestureHistorySnapshot = null;
+let historySuspended = false;
 
 // 吸附功能配置
 let snapConfig = {
@@ -130,6 +142,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectWebSocket();
 
     refreshSavedConfigSelect();
+
+    updateUndoRedoButtons();
 });
 
 /**
@@ -149,6 +163,7 @@ async function loadBuiltinDefaultConfig() {
             e
         );
         keys = [];
+        resetLayoutHistory();
     }
 }
 
@@ -237,25 +252,27 @@ function render() {
     }
 }
 
-// 绘制辅助对齐线
+// 绘制辅助对齐线（边缘/中心吸附：贯穿画布；辅助排列：见 calculateSnap 中的 x1/x2 或 y1/y2）
 function drawSnapLines() {
     if (snapLines.length === 0) return;
 
     ctx.save();
-    ctx.strokeStyle = '#FF6B6B'; // 红色对齐线
+    ctx.strokeStyle = '#FF6B6B';
     ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]); // 虚线
+    ctx.setLineDash([5, 5]);
 
-    snapLines.forEach(line => {
+    snapLines.forEach((line) => {
         ctx.beginPath();
         if (line.type === 'horizontal') {
-            // 绘制水平辅助线，显示在正确的y位置
-            ctx.moveTo(0, line.y);
-            ctx.lineTo(canvas.width, line.y);
+            const x1 = line.x1 !== undefined ? line.x1 : 0;
+            const x2 = line.x2 !== undefined ? line.x2 : canvas.width;
+            ctx.moveTo(x1, line.y);
+            ctx.lineTo(x2, line.y);
         } else {
-            // 绘制垂直辅助线，显示在正确的x位置
-            ctx.moveTo(line.x, 0);
-            ctx.lineTo(line.x, canvas.height);
+            const y1 = line.y1 !== undefined ? line.y1 : 0;
+            const y2 = line.y2 !== undefined ? line.y2 : canvas.height;
+            ctx.moveTo(line.x, y1);
+            ctx.lineTo(line.x, y2);
         }
         ctx.stroke();
     });
@@ -297,6 +314,9 @@ function calculateSnap(key, isResize = false, resizeHandle = null) {
     let snapW = w;
     let snapH = h;
     let snapped = false;
+    /** 移动模式下该轴已被边缘/中心吸附占用时，辅助排列不再改该轴，但另一轴仍可辅助 */
+    let snapLockedX = false;
+    let snapLockedY = false;
 
     // 收集所有其他按键的边和中线
     const otherKeys = keys.filter(k => k !== key);
@@ -365,6 +385,7 @@ function calculateSnap(key, isResize = false, resizeHandle = null) {
                         if (edge === 'left') snapX = target.value;
                         else if (edge === 'right') snapX = target.value - w;
                         else if (edge === 'centerX') snapX = target.value - w / 2;
+                        snapLockedX = true;
                     } else {
                         // 调整大小模式
                         if (edge === 'left') {
@@ -402,6 +423,7 @@ function calculateSnap(key, isResize = false, resizeHandle = null) {
                         if (edge === 'top') snapY = target.value;
                         else if (edge === 'bottom') snapY = target.value - h;
                         else if (edge === 'centerY') snapY = target.value - h / 2;
+                        snapLockedY = true;
                     } else {
                         // 调整大小模式
                         if (edge === 'top') {
@@ -422,57 +444,79 @@ function calculateSnap(key, isResize = false, resizeHandle = null) {
         }
     }
 
-    // 检查辅助排列距离吸附（只在移动模式下）
-    if (!isResize && !snapped && snapConfig.enabled && snapConfig.toAssist) {
-        // 为每个按键的边缘添加辅助排列距离的吸附点
-        for (let k of otherKeys) {
-            const kw = k.width || CONFIG.keySize;
-            const kh = k.height || CONFIG.keySize;
-            
-            // 计算辅助排列距离的吸附点
-            const distance = snapConfig.distance;
-            const thresholds = snapConfig.thresholds.assist;
-            
-            // 水平方向的辅助吸附点（只针对边缘）
-            const leftAssist = k.x - distance - w;
-            const rightAssist = (k.x + kw) + distance;
-            
-            // 垂直方向的辅助吸附点（只针对边缘）
-            const topAssist = k.y - distance - h;
-            const bottomAssist = (k.y + kh) + distance;
-            
-            // 检查水平辅助吸附（只针对边缘）
-            if (Math.abs(key.x - leftAssist) <= thresholds) {
-                // 显示两条垂直辅助线：左边按键的右侧边缘和当前按键的左侧边缘
-                lines.push({ type: 'vertical', x: k.x + kw });
-                lines.push({ type: 'vertical', x: leftAssist });
-                snapX = leftAssist;
-                snapped = true;
-                break;
-            } else if (Math.abs(key.x - rightAssist) <= thresholds) {
-                // 显示两条垂直辅助线：左边按键的右侧边缘和当前按键的左侧边缘
-                lines.push({ type: 'vertical', x: k.x + kw });
-                lines.push({ type: 'vertical', x: rightAssist });
-                snapX = rightAssist;
-                snapped = true;
-                break;
+    // 检查辅助排列距离吸附（只在移动模式下；与边缘/中心吸附按轴独立，互不整段屏蔽）
+    // 左右留白：仅当与参考键 Y 投影重叠；上下留白：仅当 X 投影重叠。
+    if (!isResize && snapConfig.enabled && snapConfig.toAssist) {
+        const yProjectionOverlaps = (y0, h0, y1, h1) => y0 < y1 + h1 && y1 < y0 + h0;
+        const xProjectionOverlaps = (x0, w0, x1, w1) => x0 < x1 + w1 && x1 < x0 + w0;
+        const ASSIST_LINE_OUTSET = 22;
+        const cw = typeof canvas !== 'undefined' && canvas ? canvas.width : 99999;
+        const ch = typeof canvas !== 'undefined' && canvas ? canvas.height : 99999;
+        const assistUnionXSeg = (ax, aw, kx, kw) => {
+            const lo = Math.min(ax, kx) - ASSIST_LINE_OUTSET;
+            const hi = Math.max(ax + aw, kx + kw) + ASSIST_LINE_OUTSET;
+            return { x1: Math.max(0, lo), x2: Math.min(cw, hi) };
+        };
+        const assistUnionYSeg = (ay, ah, ky, kh) => {
+            const lo = Math.min(ay, ky) - ASSIST_LINE_OUTSET;
+            const hi = Math.max(ay + ah, ky + kh) + ASSIST_LINE_OUTSET;
+            return { y1: Math.max(0, lo), y2: Math.min(ch, hi) };
+        };
+
+        const distance = snapConfig.distance;
+        const thresholds = snapConfig.thresholds.assist;
+
+        if (!snapLockedX) {
+            for (let k of otherKeys) {
+                const kw = k.width || CONFIG.keySize;
+                const kh = k.height || CONFIG.keySize;
+                if (!yProjectionOverlaps(snapY, h, k.y, kh)) continue;
+
+                const leftAssist = k.x - distance - w;
+                const rightAssist = k.x + kw + distance;
+                const ySeg = assistUnionYSeg(snapY, h, k.y, kh);
+
+                if (Math.abs(snapX - leftAssist) <= thresholds) {
+                    lines.push({ type: 'vertical', x: k.x, ...ySeg });
+                    lines.push({ type: 'vertical', x: leftAssist + w, ...ySeg });
+                    snapX = leftAssist;
+                    snapped = true;
+                    break;
+                }
+                if (Math.abs(snapX - rightAssist) <= thresholds) {
+                    lines.push({ type: 'vertical', x: k.x + kw, ...ySeg });
+                    lines.push({ type: 'vertical', x: rightAssist, ...ySeg });
+                    snapX = rightAssist;
+                    snapped = true;
+                    break;
+                }
             }
-            
-            // 检查垂直辅助吸附（只针对边缘）
-            if (Math.abs(key.y - topAssist) <= thresholds) {
-                // 显示两条水平辅助线：上边按键的底部边缘和当前按键的顶部边缘
-                lines.push({ type: 'horizontal', y: k.y + kh });
-                lines.push({ type: 'horizontal', y: topAssist });
-                snapY = topAssist;
-                snapped = true;
-                break;
-            } else if (Math.abs(key.y - bottomAssist) <= thresholds) {
-                // 显示两条水平辅助线：上边按键的底部边缘和当前按键的顶部边缘
-                lines.push({ type: 'horizontal', y: k.y + kh });
-                lines.push({ type: 'horizontal', y: bottomAssist });
-                snapY = bottomAssist;
-                snapped = true;
-                break;
+        }
+
+        if (!snapLockedY) {
+            for (let k of otherKeys) {
+                const kw = k.width || CONFIG.keySize;
+                const kh = k.height || CONFIG.keySize;
+                if (!xProjectionOverlaps(snapX, w, k.x, kw)) continue;
+
+                const topAssist = k.y - distance - h;
+                const bottomAssist = k.y + kh + distance;
+                const xSeg = assistUnionXSeg(snapX, w, k.x, kw);
+
+                if (Math.abs(snapY - topAssist) <= thresholds) {
+                    lines.push({ type: 'horizontal', y: k.y, ...xSeg });
+                    lines.push({ type: 'horizontal', y: topAssist + h, ...xSeg });
+                    snapY = topAssist;
+                    snapped = true;
+                    break;
+                }
+                if (Math.abs(snapY - bottomAssist) <= thresholds) {
+                    lines.push({ type: 'horizontal', y: k.y + kh, ...xSeg });
+                    lines.push({ type: 'horizontal', y: bottomAssist, ...xSeg });
+                    snapY = bottomAssist;
+                    snapped = true;
+                    break;
+                }
             }
         }
     }
@@ -579,7 +623,7 @@ function drawKey(key) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 如果是选中状态，绘制调整手柄
+    // 拖动 / 缩放时绘制调整手柄
     if (key === draggedKey || key === resizingKey) {
         drawResizeHandles(key);
     }
@@ -592,6 +636,49 @@ function drawKey(key) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(key.label, key.x + w / 2, key.y + h / 2);
+
+    // 选中高亮：画在按键内容之上，路径在键体外侧，不改动内部填充/按下预览色
+    if (key === selectedKey && key !== draggedKey && key !== resizingKey) {
+        drawSelectedKeyOutline(key, w, h);
+    }
+
+    ctx.restore();
+}
+
+/** 仅外缘描边 + 柔光，globalAlpha 独立于按键，避免透明键上看不清 */
+function drawSelectedKeyOutline(key, w, h) {
+    const pad = 5;
+    const r = 10;
+    const ox = key.x - pad;
+    const oy = key.y - pad;
+    const ow = w + pad * 2;
+    const oh = h + pad * 2;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    ctx.strokeStyle = 'rgba(0, 188, 212, 0.45)';
+    ctx.lineWidth = 10;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    roundRect(ctx, ox - 2, oy - 2, ow + 4, oh + 4, r + 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#4DD0E1';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    roundRect(ctx, ox, oy, ow, oh, r);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#E0F7FA';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    roundRect(ctx, ox + 1.5, oy + 1.5, ow - 3, oh - 3, Math.max(4, r - 2));
+    ctx.stroke();
 
     ctx.restore();
 }
@@ -636,6 +723,13 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // ==================== 键盘事件处理 ====================
+function isTypingInField(target) {
+    if (!target) return false;
+    const t = target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return true;
+    return !!target.isContentEditable;
+}
+
 function handleKeyDown(e) {
     // 如果正在添加按键，始终处理本地事件（不管 WebSocket 是否连接）
     if (isAddingKey) {
@@ -644,6 +738,29 @@ function handleKeyDown(e) {
         addKey(e.code, e.key.toUpperCase());
         isAddingKey = false;
         document.getElementById('add-key-hint').style.display = 'none';
+        return;
+    }
+
+    if (
+        (e.key === 'Delete' || e.code === 'Delete') &&
+        selectedKey &&
+        !isTypingInField(e.target)
+    ) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeKey(selectedKey.code);
+        return;
+    }
+
+    if (isLayoutUndoRedoShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const k = e.key;
+        if (k === 'y' || k === 'Y' || ((k === 'z' || k === 'Z') && e.shiftKey)) {
+            redoLayout();
+        } else {
+            undoLayout();
+        }
         return;
     }
 
@@ -766,6 +883,14 @@ function handleMouseDown(e) {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    if (e.target === canvas && typeof canvas.focus === 'function') {
+        try {
+            canvas.focus({ preventScroll: true });
+        } catch (_) {
+            canvas.focus();
+        }
+    }
+
     // 从后往前找，优先选中上层的按键
     let clickedOnKey = false;
     let clickedKey = null;
@@ -781,6 +906,9 @@ function handleMouseDown(e) {
             resizeHandle = handle;
             resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
             clickedOnKey = true;
+            selectedKey = key;
+            beginLayoutGesture();
+            updateKeyList();
             invalidateCanvas();
             return;
         }
@@ -792,6 +920,9 @@ function handleMouseDown(e) {
             resizeHandle = edge;
             resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
             clickedOnKey = true;
+            selectedKey = key;
+            beginLayoutGesture();
+            updateKeyList();
             invalidateCanvas();
             return;
         }
@@ -804,29 +935,32 @@ function handleMouseDown(e) {
         }
     }
 
-    // 如果点击了按键
+    // 如果点击了按键（本体，非手柄/边）
     if (clickedOnKey && clickedKey) {
-        // 检查是否正在编辑某个按键
         if (editingKey) {
-            // 编辑菜单打开时，只允许拖动正在编辑的按键
             if (clickedKey === editingKey) {
-                // 无论是否有独立背景，按住按键内都拖动按键
-                draggedKey = clickedKey;
+                selectedKey = clickedKey;
+                dragCandidateKey = clickedKey;
+                dragCandidateFrom = { x, y };
                 dragOffset.x = x - clickedKey.x;
                 dragOffset.y = y - clickedKey.y;
             } else {
-                // 编辑菜单打开时，禁用其他按键的拖动
                 return;
             }
         } else {
-            // 正常拖动按键
-            draggedKey = clickedKey;
+            selectedKey = clickedKey;
+            dragCandidateKey = clickedKey;
+            dragCandidateFrom = { x, y };
             dragOffset.x = x - clickedKey.x;
             dragOffset.y = y - clickedKey.y;
         }
+        updateKeyList();
         invalidateCanvas();
         return;
     }
+
+    selectedKey = null;
+    updateKeyList();
 
     // 如果没有点击到按键
     // 检查是否正在编辑某个按键且有独立背景图片
@@ -860,6 +994,16 @@ function handleMouseMove(e) {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    if (dragCandidateKey && !draggedKey) {
+        const dx = x - dragCandidateFrom.x;
+        const dy = y - dragCandidateFrom.y;
+        if (dx * dx + dy * dy >= CLICK_DRAG_THRESHOLD_PX * CLICK_DRAG_THRESHOLD_PX) {
+            draggedKey = dragCandidateKey;
+            dragCandidateKey = null;
+            beginLayoutGesture();
+        }
+    }
 
     // 如果正在调整大小
     if (resizingKey) {
@@ -1031,6 +1175,11 @@ function handleMouseMove(e) {
 }
 
 function handleMouseUp() {
+    const hadDrag = !!draggedKey;
+    const didLayoutGesture = hadDrag || !!resizingKey;
+
+    dragCandidateKey = null;
+
     if (draggedKey) {
         draggedKey = null;
         snapLines = []; // 清除对齐线
@@ -1041,6 +1190,10 @@ function handleMouseUp() {
         resizeHandle = null;
         snapLines = []; // 清除对齐线
         updateKeyList();
+    }
+
+    if (didLayoutGesture) {
+        maybeCommitGestureHistory(true);
     }
     if (isDraggingBg) {
         isDraggingBg = false;
@@ -1137,6 +1290,7 @@ function openKeyEdit(key) {
     editingKeyBackup = JSON.parse(JSON.stringify(key));
     
     editingKey = key;
+    selectedKey = key;
     document.getElementById('edit-key-label').value = key.label;
     document.getElementById('edit-key-width').value = key.width || CONFIG.keySize;
     document.getElementById('edit-key-height').value = key.height || CONFIG.keySize;
@@ -1207,6 +1361,7 @@ function openKeyEdit(key) {
     }
 
     document.getElementById('key-edit-modal').classList.remove('hidden');
+    updateKeyList();
     invalidateCanvas();
 }
 
@@ -1503,6 +1658,7 @@ function closeKeyEdit() {
     document.getElementById('key-edit-modal').classList.add('hidden');
     editingKey = null;
     editingKeyBackup = null;
+    updateKeyList();
     invalidateCanvas();
 }
 
@@ -1553,6 +1709,8 @@ function handleKeyInactiveColorPreview(e) {
 function saveKeyEdit() {
     if (!editingKey) return;
 
+    pushUndoCurrentState();
+
     editingKey.label = document.getElementById('edit-key-label').value || editingKey.label;
     editingKey.width = parseInt(document.getElementById('edit-key-width').value) || CONFIG.keySize;
     editingKey.height = parseInt(document.getElementById('edit-key-height').value) || CONFIG.keySize;
@@ -1597,7 +1755,6 @@ function saveKeyEdit() {
     delete editingKey._previewPressed;
 
     closeKeyEdit();
-    updateKeyList();
 }
 
 function cancelKeyEdit() {
@@ -1619,7 +1776,6 @@ function cancelKeyEdit() {
     }
     
     closeKeyEdit();
-    updateKeyList();
 }
 
 // ==================== 控制面板功能 ====================
@@ -1992,6 +2148,8 @@ function addKey(code, label) {
         return;
     }
 
+    pushUndoCurrentState();
+
     const newKey = {
         code: code,
         label: label.length > 3 ? code.replace('Key', '').replace('Digit', '') : label,
@@ -2002,21 +2160,26 @@ function addKey(code, label) {
     };
 
     keys.push(newKey);
+    selectedKey = newKey;
     updateKeyList();
-
-    // 自动打开编辑窗口
-    openKeyEdit(newKey);
+    invalidateCanvas();
 }
 
 function removeKey(code) {
+    pushUndoCurrentState();
     keys = keys.filter(k => k.code !== code);
+    if (selectedKey && selectedKey.code === code) {
+        selectedKey = null;
+    }
     updateKeyList();
     invalidateCanvas();
 }
 
 function clearAllKeys() {
     if (confirm('确定要清空所有按键吗？')) {
+        pushUndoCurrentState();
         keys = [];
+        selectedKey = null;
         updateKeyList();
         invalidateCanvas();
     }
@@ -2024,19 +2187,52 @@ function clearAllKeys() {
 
 function updateKeyList() {
     const list = document.getElementById('key-list');
+    if (!list) return;
     list.innerHTML = '';
 
-    keys.forEach(key => {
+    keys.forEach((key) => {
         const item = document.createElement('div');
         item.className = 'key-item';
-        item.innerHTML = `
-            <span style="cursor:pointer;" onclick="openKeyEditByCode('${key.code}')" ondblclick="removeKey('${key.code}')">
-                ${key.label} [${key.width || 50}x${key.height || 50}] - (${Math.round(key.x)}, ${Math.round(key.y)})
-            </span>
-            <button class="btn btn-danger" onclick="removeKey('${key.code}')">Delete</button>
-        `;
+        if (selectedKey && selectedKey.code === key.code) {
+            item.classList.add('key-item-selected');
+        }
+
+        const span = document.createElement('span');
+        span.className = 'key-item-label';
+        span.textContent = `${key.label} [${key.width || 50}x${key.height || 50}] - (${Math.round(key.x)}, ${Math.round(key.y)})`;
+        span.addEventListener('click', () => {
+            selectKeyByCode(key.code);
+        });
+        span.addEventListener('dblclick', (ev) => {
+            ev.preventDefault();
+            openKeyEditByCode(key.code);
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn btn-danger';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => removeKey(key.code));
+
+        item.appendChild(span);
+        item.appendChild(delBtn);
         list.appendChild(item);
     });
+}
+
+function selectKeyByCode(code) {
+    const k = keys.find((x) => x.code === code);
+    if (!k) return;
+    selectedKey = k;
+    if (canvas && typeof canvas.focus === 'function') {
+        try {
+            canvas.focus({ preventScroll: true });
+        } catch (_) {
+            canvas.focus();
+        }
+    }
+    updateKeyList();
+    invalidateCanvas();
 }
 
 function openKeyEditByCode(code) {
@@ -2064,6 +2260,144 @@ function cleanKeyForSave(key) {
         }
     });
     return cleaned;
+}
+
+function keyFromPersistedData(keyData) {
+    const key = cleanKeyForSave(keyData);
+    if (key.bgImage) {
+        const img = new Image();
+        img.onload = () => {
+            key._bgImageObj = img;
+            invalidateCanvas();
+        };
+        img.onerror = () => {
+            key._bgImageLoadFailed = true;
+            invalidateCanvas();
+        };
+        img.src = key.bgImage;
+    }
+    return key;
+}
+
+function snapshotKeysLayout() {
+    return keys.map((k) => JSON.parse(JSON.stringify(cleanKeyForSave(k))));
+}
+
+function snapshotsLayoutEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pushUndoCurrentState() {
+    if (historySuspended) return;
+    layoutUndoStack.push(snapshotKeysLayout());
+    while (layoutUndoStack.length > MAX_LAYOUT_HISTORY) {
+        layoutUndoStack.shift();
+    }
+    layoutRedoStack.length = 0;
+    updateUndoRedoButtons();
+}
+
+function beginLayoutGesture() {
+    if (historySuspended) return;
+    pendingGestureHistorySnapshot = snapshotKeysLayout();
+}
+
+function maybeCommitGestureHistory(didDragOrResize) {
+    if (!didDragOrResize) return;
+    if (!pendingGestureHistorySnapshot || historySuspended) {
+        pendingGestureHistorySnapshot = null;
+        return;
+    }
+    const now = snapshotKeysLayout();
+    if (!snapshotsLayoutEqual(pendingGestureHistorySnapshot, now)) {
+        layoutUndoStack.push(pendingGestureHistorySnapshot);
+        while (layoutUndoStack.length > MAX_LAYOUT_HISTORY) {
+            layoutUndoStack.shift();
+        }
+        layoutRedoStack.length = 0;
+        updateUndoRedoButtons();
+    }
+    pendingGestureHistorySnapshot = null;
+}
+
+function applyKeysArrayFromSnapshot(snapshot) {
+    const modalEl = document.getElementById('key-edit-modal');
+    const modalWasOpen = modalEl && !modalEl.classList.contains('hidden');
+    const wasEditingCode = editingKey ? editingKey.code : null;
+
+    keys = snapshot.map(keyFromPersistedData);
+
+    if (selectedKey) {
+        const selCode = selectedKey.code;
+        selectedKey = keys.find((k) => k.code === selCode) || null;
+    }
+
+    if (wasEditingCode) {
+        editingKey = keys.find((k) => k.code === wasEditingCode) || null;
+        if (modalWasOpen) {
+            if (!editingKey) {
+                closeKeyEdit();
+            } else {
+                editingKeyBackup = JSON.parse(JSON.stringify(editingKey));
+                updateEditMenuValues();
+            }
+        }
+    }
+
+    updateKeyList();
+    invalidateCanvas();
+}
+
+function isLayoutUndoRedoShortcut(e) {
+    if ((!e.ctrlKey && !e.metaKey) || e.altKey) return false;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+        return false;
+    }
+    const k = e.key;
+    return k === 'z' || k === 'Z' || k === 'y' || k === 'Y';
+}
+
+function undoLayout() {
+    if (layoutUndoStack.length === 0 || historySuspended) return;
+    historySuspended = true;
+    try {
+        const previous = layoutUndoStack.pop();
+        layoutRedoStack.push(snapshotKeysLayout());
+        applyKeysArrayFromSnapshot(previous);
+    } finally {
+        historySuspended = false;
+    }
+    updateUndoRedoButtons();
+}
+
+function redoLayout() {
+    if (layoutRedoStack.length === 0 || historySuspended) return;
+    historySuspended = true;
+    try {
+        const next = layoutRedoStack.pop();
+        layoutUndoStack.push(snapshotKeysLayout());
+        applyKeysArrayFromSnapshot(next);
+    } finally {
+        historySuspended = false;
+    }
+    updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+    const u = document.getElementById('layout-undo-btn');
+    const r = document.getElementById('layout-redo-btn');
+    if (u) u.disabled = layoutUndoStack.length === 0;
+    if (r) r.disabled = layoutRedoStack.length === 0;
+}
+
+function resetLayoutHistory() {
+    layoutUndoStack = [];
+    layoutRedoStack = [];
+    pendingGestureHistorySnapshot = null;
+    dragCandidateKey = null;
+    selectedKey = null;
+    updateUndoRedoButtons();
 }
 
 function buildCurrentConfigObject() {
@@ -2269,30 +2603,7 @@ function applyConfig(config) {
 
     // 加载按键配置
     if (config.keys && Array.isArray(config.keys)) {
-        // 创建新的keys数组，确保不保留任何旧状态
-        keys = config.keys.map(keyData => {
-            // 创建干净的按键对象
-            const key = cleanKeyForSave(keyData);
-
-            // 如果有背景图片，异步加载
-            if (key.bgImage) {
-                const img = new Image();
-                img.onload = () => {
-                    key._bgImageObj = img;
-                    console.log('按键背景加载成功:', key.code);
-                    invalidateCanvas();
-                };
-                img.onerror = () => {
-                    console.warn('按键背景加载失败:', key.code);
-                    // 保留bgImage配置，但标记为加载失败
-                    key._bgImageLoadFailed = true;
-                    invalidateCanvas();
-                };
-                img.src = key.bgImage;
-            }
-
-            return key;
-        });
+        keys = config.keys.map(keyFromPersistedData);
     }
 
     // 加载全局配置
@@ -2403,6 +2714,8 @@ function applyConfig(config) {
 
     // 更新按键列表显示
     updateKeyList();
+
+    resetLayoutHistory();
 
     console.log('配置加载完成');
     invalidateCanvas();

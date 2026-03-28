@@ -34,6 +34,7 @@
         }
         
         #keyboard-canvas {
+            outline: none;
             position: relative;
             z-index: 1;
             cursor: default;
@@ -139,6 +140,11 @@
             background: #45a049;
         }
         
+        .btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        
         .btn-danger {
             background: #f44336;
         }
@@ -177,6 +183,18 @@
         .key-item button {
             font-size: 10px;
             padding: 2px 5px;
+        }
+        
+        .key-item-label {
+            cursor: pointer;
+            flex: 1;
+            margin-right: 6px;
+            font-size: 11px;
+        }
+        
+        .key-item-selected {
+            outline: 1px solid #26C6DA;
+            background: rgba(38, 198, 218, 0.18);
         }
         
         .hidden {
@@ -411,7 +429,16 @@
         </div>
         
         <div class="control-group">
-            <label>当前按键列表 (点击编辑，双击删除):</label>
+            <label>编辑历史（仅按键布局与属性快照）:</label>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
+                <button type="button" class="btn" id="layout-undo-btn" onclick="undoLayout()">↩ 撤销 (Ctrl+Z)</button>
+                <button type="button" class="btn btn-primary" id="layout-redo-btn" onclick="redoLayout()">↪ 恢复 (Ctrl+Y)</button>
+            </div>
+            <small style="color:#aaa; display:block; margin-top:5px;">支持 Mac 的 Cmd+Z / Shift+Cmd+Z 恢复；在输入框内不会拦截快捷键。</small>
+        </div>
+        
+        <div class="control-group">
+            <label>当前按键列表（单击名称或画布按键以选中；双击名称或画布打开编辑；Delete 删除选中项；侧栏 Delete 按钮同效）:</label>
             <div class="key-list" id="key-list"></div>
         </div>
         
@@ -492,7 +519,7 @@
     
     <div id="keyboard-container">
         <img id="bg-image" style="display:none; visibility:hidden;">
-        <canvas id="keyboard-canvas"></canvas>
+        <canvas id="keyboard-canvas" tabindex="0" title="单击选中；双击编辑；Delete 删除选中；拖移需移动超过 5px"></canvas>
     </div>
     
     <div id="add-key-hint" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.9); color:white; padding:20px; border-radius:10px; z-index:2000; text-align:center;">
