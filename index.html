@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOTA键盘按键显示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: transparent;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        #keyboard-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        #bg-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        #keyboard-canvas {
+            position: relative;
+            z-index: 1;
+            cursor: default;
+        }
+        
+        #keyboard-canvas.cursor-move {
+            cursor: move;
+        }
+        
+        #keyboard-canvas.cursor-resize-nw {
+            cursor: nw-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-n {
+            cursor: n-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-ne {
+            cursor: ne-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-e {
+            cursor: e-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-se {
+            cursor: se-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-s {
+            cursor: s-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-sw {
+            cursor: sw-resize;
+        }
+        
+        #keyboard-canvas.cursor-resize-w {
+            cursor: w-resize;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            font-size: 12px;
+            max-width: 350px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .controls h3 {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .control-group {
+            margin-bottom: 10px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 3px;
+        }
+        
+        .control-group input[type="range"] {
+            width: 100%;
+        }
+        
+        .control-group input[type="file"] {
+            width: 100%;
+            font-size: 11px;
+        }
+        
+        .control-group input[type="text"], .control-group input[type="number"] {
+            width: 100%;
+            padding: 3px;
+            font-size: 11px;
+            border-radius: 3px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+        }
+        
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+        }
+        
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        
+        .btn-primary {
+            background: #2196F3;
+        }
+        
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+        
+        .key-list {
+            max-height: 150px;
+            overflow-y: auto;
+            background: rgba(255,255,255,0.1);
+            padding: 5px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        
+        .key-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px;
+            margin-bottom: 3px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+        
+        .key-item button {
+            font-size: 10px;
+            padding: 2px 5px;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        #toggle-controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1001;
+            background: #2196F3;
+        }
+        
+        /* 按键编辑弹窗 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            z-index: 3000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+        
+        .modal {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 320px;
+            max-width: 420px;
+            pointer-events: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        
+        .modal-drag-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            cursor: move;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent);
+            border-radius: 10px 10px 0 0;
+        }
+        
+        .modal-drag-handle::before {
+            content: '⋮⋮';
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #666;
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+        
+        .modal h3 {
+            margin-bottom: 15px;
+            color: white;
+        }
+        
+        .modal .form-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .modal .form-row > div {
+            flex: 1;
+        }
+        
+        .modal label {
+            display: block;
+            color: #aaa;
+            font-size: 11px;
+            margin-bottom: 3px;
+        }
+        
+        .modal input[type="text"],
+        .modal input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+        }
+        
+        .modal input[type="color"] {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .modal input[type="color"]:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .modal .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .modal .btn-group .btn {
+            flex: 1;
+        }
+        
+        .color-picker-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .color-picker-row > div {
+            flex: 1;
+        }
+        
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .checkbox-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        
+        .checkbox-row label {
+            margin: 0;
+            cursor: pointer;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggle-controls" class="btn" onclick="toggleControls()">⚙️ 设置</button>
+    
+    <div class="controls" id="controls-panel">
+        <h3>🎮 DOTA键盘显示设置</h3>
+        
+        <div class="control-group">
+            <label>背景图片:</label>
+            <div style="display: flex; gap: 10px;">
+                <input type="file" id="bg-upload" accept="image/*" onchange="loadBackground(event)">
+                <button id="remove-bg-btn" class="btn btn-danger" onclick="removeBackground()" style="display: none;">🗑️ 删除背景</button>
+            </div>
+        </div>
+        
+
+        
+        <div class="control-group">
+            <label>背景缩放: <span id="bg-scale-val">100</span>%</label>
+            <input type="range" id="bg-scale" min="10" max="200" value="100" oninput="updateBgScale(this.value)">
+        </div>
+        
+        <div class="control-group">
+            <label>按键区域背景透明度: <span id="bg-key-opacity-val">80</span>%</label>
+            <input type="range" id="bg-key-opacity" min="0" max="100" value="80" oninput="updateBgKeyOpacity(this.value)">
+        </div>
+        
+        <div class="control-group">
+            <label>非按键区域背景透明度: <span id="bg-non-key-opacity-val">20</span>%</label>
+            <input type="range" id="bg-non-key-opacity" min="0" max="100" value="20" oninput="updateBgNonKeyOpacity(this.value)">
+        </div>
+        
+        <div class="control-group">
+            <label>按键透明度: <span id="key-opacity-val">20</span>%</label>
+            <input type="range" id="key-opacity" min="0" max="100" value="20" oninput="updateOpacity(this.value)">
+        </div>
+        
+        <div class="control-group">
+            <label>全局按键颜色设置:</label>
+            <div class="color-picker-row">
+                <div>
+                    <label>按下颜色:</label>
+                    <div class="color-preview" id="active-color-preview" style="background-color: #00ff00; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" onclick="openColorPicker('active')"></div>
+                </div>
+                <div>
+                    <label>未按下颜色:</label>
+                    <div class="color-preview" id="inactive-color-preview" style="background-color: #333333; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" onclick="openColorPicker('inactive')"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 颜色选择器弹窗 -->
+        <div id="color-picker-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 320px;">
+                <h3 id="color-picker-title">选择颜色</h3>
+                <div style="margin: 15px 0;">
+                    <input type="color" id="color-picker-input" style="width: 100%; height: 50px; border: none; cursor: pointer;">
+                </div>
+                
+                <!-- 经典颜色预设 -->
+                <div style="margin: 15px 0;">
+                    <label style="font-size: 12px; color: #aaa; display: block; margin-bottom: 8px;">经典颜色:</label>
+                    <div id="classic-colors" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;">
+                        <!-- 经典颜色将由JS动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 历史颜色 -->
+                <div style="margin: 15px 0;" id="history-colors-section">
+                    <label style="font-size: 12px; color: #aaa; display: block; margin-bottom: 8px;">最近使用:</label>
+                    <div id="history-colors" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; min-height: 28px;">
+                        <!-- 历史颜色将由JS动态生成 -->
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+                    <button class="btn" onclick="confirmColorPick()">确认</button>
+                    <button class="btn btn-danger" onclick="cancelColorPick()">取消</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <button class="btn" onclick="startAddKey()">➕ 添加按键</button>
+            <button class="btn btn-danger" onclick="clearAllKeys()">🗑️ 清空所有</button>
+        </div>
+        
+        <div class="control-group">
+            <label>当前按键列表 (点击编辑，双击删除):</label>
+            <div class="key-list" id="key-list"></div>
+        </div>
+        
+        <div class="control-group">
+            <button class="btn" onclick="saveConfig()">💾 保存配置</button>
+            <button class="btn" onclick="document.getElementById('config-upload').click()">📁 加载配置</button>
+            <input type="file" id="config-upload" accept=".json" style="display:none" onchange="loadConfig(event)">
+        </div>
+        
+        <div class="control-group">
+            <button class="btn btn-primary" onclick="showConfigLocation()">📂 配置保存在哪</button>
+        </div>
+        
+        <div class="control-group">
+            <button class="btn btn-danger" onclick="hideControls()">❌ 隐藏面板</button>
+            <small style="color:#aaa; display:block; margin-top:5px;">隐藏后按 F2 显示</small>
+        </div>
+        
+        <div class="control-group">
+            <label>辅助吸附功能:</label>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <button class="btn" onclick="enableAllSnap()">开启全部吸附</button>
+                <button class="btn btn-danger" onclick="disableAllSnap()">关闭全部吸附</button>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="snap-to-edges" checked onchange="toggleSnapToEdges()">
+                <label for="snap-to-edges">吸附到边缘</label>
+            </div>
+            <div class="control-group" style="margin-left: 20px;" id="snap-edges-controls">
+                <label>边缘吸附阈值: <span id="snap-edges-threshold-val">10</span>px</label>
+                <input type="range" id="snap-edges-threshold" min="1" max="20" value="10" oninput="updateSnapEdgesThreshold(this.value)">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="snap-to-center" checked onchange="toggleSnapToCenter()">
+                <label for="snap-to-center">吸附到中心</label>
+            </div>
+            <div class="control-group" style="margin-left: 20px;" id="snap-center-controls">
+                <label>中心吸附阈值: <span id="snap-center-threshold-val">10</span>px</label>
+                <input type="range" id="snap-center-threshold" min="1" max="20" value="10" oninput="updateSnapCenterThreshold(this.value)">
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="snap-to-assist" checked onchange="toggleSnapToAssist()">
+                <label for="snap-to-assist">辅助排列</label>
+            </div>
+            <div class="control-group" style="margin-left: 20px;" id="snap-assist-controls">
+                <label>辅助排列距离: <span id="snap-distance-val">10</span>px</label>
+                <input type="range" id="snap-distance" min="0" max="100" value="10" oninput="updateSnapDistance(this.value)">
+                <label>辅助排列阈值: <span id="snap-assist-threshold-val">10</span>px</label>
+                <input type="range" id="snap-assist-threshold" min="1" max="20" value="10" oninput="updateSnapAssistThreshold(this.value)">
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <small style="color:#888;">
+                💡 提示: 左键拖拽移动，拖拽边缘调整大小，右键编辑
+            </small>
+        </div>
+    </div>
+    
+    <div id="keyboard-container">
+        <img id="bg-image" style="display:none; visibility:hidden;">
+        <canvas id="keyboard-canvas"></canvas>
+    </div>
+    
+    <div id="add-key-hint" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.9); color:white; padding:20px; border-radius:10px; z-index:2000; text-align:center;">
+        <h3>按任意键添加...</h3>
+        <p>按下你想添加的按键</p>
+        <button class="btn btn-danger" onclick="cancelAddKey()">取消</button>
+    </div>
+    
+    <!-- 按键编辑弹窗 -->
+    <div id="key-edit-modal" class="modal-overlay hidden">
+        <div class="modal" id="key-edit-modal-content">
+            <div class="modal-drag-handle" id="key-edit-drag-handle"></div>
+            <h3 style="margin-top: 10px;">编辑按键</h3>
+            <div class="form-row">
+                <div>
+                    <label>显示文字:</label>
+                    <input type="text" id="edit-key-label" placeholder="例如: Q">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label>宽度 (像素):</label>
+                    <input type="number" id="edit-key-width" min="20" max="300" value="50">
+                </div>
+                <div>
+                    <label>高度 (像素):</label>
+                    <input type="number" id="edit-key-height" min="20" max="300" value="50">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label>X 位置:</label>
+                    <input type="number" id="edit-key-x" min="0">
+                </div>
+                <div>
+                    <label>Y 位置:</label>
+                    <input type="number" id="edit-key-y" min="0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="use-global-active" checked onchange="toggleKeyActiveColor()">
+                        <label for="use-global-active">使用全局按下颜色</label>
+                    </div>
+                    <input type="color" id="edit-key-active-color" value="#00ff00" disabled>
+                </div>
+                <div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="use-global-inactive" checked onchange="toggleKeyInactiveColor()">
+                        <label for="use-global-inactive">使用全局未按下颜色</label>
+                    </div>
+                    <input type="color" id="edit-key-inactive-color" value="#333333" disabled>
+                </div>
+            </div>
+            
+            <!-- 按键独立背景图片 -->
+            <div class="form-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="flex: 1;">
+                    <label>按键背景图片 (优先于全局背景):</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <input type="file" id="edit-key-bg-image" accept="image/*" onchange="loadKeyBackgroundImage(event)" style="flex: 1;">
+                        <button class="btn btn-danger" id="remove-key-bg-btn" onclick="removeKeyBackgroundImage()" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
+                    </div>
+                    <div id="key-bg-preview" style="margin-top: 8px; max-width: 100px; max-height: 60px; overflow: hidden; border-radius: 4px; display: none;">
+                        <img id="key-bg-preview-img" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 按键透明度设置 -->
+            <div class="form-row" style="margin-top: 10px;">
+                <div style="flex: 1;">
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="use-global-opacity" checked onchange="toggleKeyOpacity()">
+                        <label for="use-global-opacity">使用全局按键透明度</label>
+                    </div>
+                    <label>按键透明度: <span id="edit-key-opacity-val">20</span>%</label>
+                    <input type="range" id="edit-key-opacity" min="0" max="100" value="20" disabled oninput="updateKeyOpacityPreview(this.value)">
+                </div>
+            </div>
+            
+            <!-- 按键背景图片透明度设置 -->
+            <div class="form-row" id="key-bg-opacity-row" style="display: none;">
+                <div style="flex: 1;">
+                    <label>背景图片透明度: <span id="edit-key-bg-opacity-val">0</span>%</label>
+                    <input type="range" id="edit-key-bg-opacity" min="0" max="100" value="0" oninput="updateKeyBgOpacityPreview(this.value)">
+                </div>
+            </div>
+            
+            <!-- 背景设置模式切换 -->
+            <div class="form-row" id="key-bg-mode-row" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="flex: 1;">
+                    <label style="color: #aaa; font-size: 11px; display: block; margin-bottom: 8px;">背景设置模式:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn" id="key-bg-mode-simple" onclick="setKeyBgMode('simple')" style="font-size: 11px; padding: 5px 12px; flex: 1;">简单 (自动填满)</button>
+                        <button class="btn btn-primary" id="key-bg-mode-advanced" onclick="setKeyBgMode('advanced')" style="font-size: 11px; padding: 5px 12px; flex: 1;">高级 (手动调整)</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 按键背景高级设置 -->
+            <div class="form-row" id="key-bg-advanced-row" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="flex: 1;">
+                    <label style="color: #aaa; font-size: 11px; display: block; margin-bottom: 8px;">背景调整 (编辑时按住按键拖动背景/滚轮调整缩放):</label>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 120px;">
+                            <label>背景缩放: <span id="edit-key-bg-scale-val">100</span>%</label>
+                            <input type="range" id="edit-key-bg-scale" min="1" max="500" value="100" oninput="updateKeyBgScalePreview(this.value)">
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; gap: 10px;">
+                        <button class="btn" id="toggle-bg-view-mode" onclick="toggleKeyBgViewMode()" style="font-size: 10px; padding: 3px 8px;">显示模式: 完整背景</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn" onclick="saveKeyEdit()">保存</button>
+                <button class="btn btn-danger" onclick="cancelKeyEdit()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="keyboard.js"></script>
+</body>
+</html>
