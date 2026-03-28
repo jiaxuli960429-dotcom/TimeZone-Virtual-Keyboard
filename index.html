@@ -343,7 +343,7 @@
     </style>
 </head>
 <body>
-    <button id="toggle-controls" class="btn" onclick="toggleControls()">⚙️ 设置</button>
+    <button id="toggle-controls" class="btn" data-click="toggleControls">⚙️ 设置</button>
     
     <div class="controls" id="controls-panel">
         <h3>🎮 DOTA键盘显示设置</h3>
@@ -351,8 +351,8 @@
         <div class="control-group">
             <label>背景图片:</label>
             <div style="display: flex; gap: 10px;">
-                <input type="file" id="bg-upload" accept="image/*" onchange="loadBackground(event)">
-                <button id="remove-bg-btn" class="btn btn-danger" onclick="removeBackground()" style="display: none;">🗑️ 删除背景</button>
+                <input type="file" id="bg-upload" accept="image/*" data-change="loadBackground:event">
+                <button id="remove-bg-btn" class="btn btn-danger" data-click="removeBackground" style="display: none;">🗑️ 删除背景</button>
             </div>
         </div>
         
@@ -360,22 +360,22 @@
         
         <div class="control-group">
             <label>背景缩放: <span id="bg-scale-val">100</span>%</label>
-            <input type="range" id="bg-scale" min="10" max="200" value="100" oninput="updateBgScale(this.value)">
+            <input type="range" id="bg-scale" min="10" max="200" value="100" data-input="updateBgScale:value">
         </div>
         
         <div class="control-group">
             <label>按键区域背景透明度: <span id="bg-key-opacity-val">80</span>%</label>
-            <input type="range" id="bg-key-opacity" min="0" max="100" value="80" oninput="updateBgKeyOpacity(this.value)">
+            <input type="range" id="bg-key-opacity" min="0" max="100" value="80" data-input="updateBgKeyOpacity:value">
         </div>
         
         <div class="control-group">
             <label>非按键区域背景透明度: <span id="bg-non-key-opacity-val">20</span>%</label>
-            <input type="range" id="bg-non-key-opacity" min="0" max="100" value="20" oninput="updateBgNonKeyOpacity(this.value)">
+            <input type="range" id="bg-non-key-opacity" min="0" max="100" value="20" data-input="updateBgNonKeyOpacity:value">
         </div>
         
         <div class="control-group">
             <label>按键透明度: <span id="key-opacity-val">20</span>%</label>
-            <input type="range" id="key-opacity" min="0" max="100" value="20" oninput="updateOpacity(this.value)">
+            <input type="range" id="key-opacity" min="0" max="100" value="20" data-input="updateOpacity:value">
         </div>
         
         <div class="control-group">
@@ -383,11 +383,11 @@
             <div class="color-picker-row">
                 <div>
                     <label>按下颜色:</label>
-                    <div class="color-preview" id="active-color-preview" style="background-color: #00ff00; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" onclick="openColorPicker('active')"></div>
+                    <div class="color-preview" id="active-color-preview" style="background-color: #00ff00; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" data-click="openColorPicker:active"></div>
                 </div>
                 <div>
                     <label>未按下颜色:</label>
-                    <div class="color-preview" id="inactive-color-preview" style="background-color: #333333; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" onclick="openColorPicker('inactive')"></div>
+                    <div class="color-preview" id="inactive-color-preview" style="background-color: #333333; width: 40px; height: 40px; border-radius: 4px; cursor: pointer; border: 2px solid #555;" data-click="openColorPicker:inactive"></div>
                 </div>
             </div>
         </div>
@@ -417,22 +417,22 @@
                 </div>
                 
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
-                    <button class="btn" onclick="confirmColorPick()">确认</button>
-                    <button class="btn btn-danger" onclick="cancelColorPick()">取消</button>
+                    <button class="btn" data-click="confirmColorPick">确认</button>
+                    <button class="btn btn-danger" data-click="cancelColorPick">取消</button>
                 </div>
             </div>
         </div>
         
         <div class="control-group">
-            <button class="btn" onclick="startAddKey()">➕ 添加按键</button>
-            <button class="btn btn-danger" onclick="clearAllKeys()">🗑️ 清空所有</button>
+            <button class="btn" data-click="startAddKey">➕ 添加按键</button>
+            <button class="btn btn-danger" data-click="clearAllKeys">🗑️ 清空所有</button>
         </div>
         
         <div class="control-group">
             <label>编辑历史（仅按键布局与属性快照）:</label>
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
-                <button type="button" class="btn" id="layout-undo-btn" onclick="undoLayout()">↩ 撤销 (Ctrl+Z)</button>
-                <button type="button" class="btn btn-primary" id="layout-redo-btn" onclick="redoLayout()">↪ 恢复 (Ctrl+Y)</button>
+                <button type="button" class="btn" id="layout-undo-btn" data-click="undoLayout">↩ 撤销 (Ctrl+Z)</button>
+                <button type="button" class="btn btn-primary" id="layout-redo-btn" data-click="redoLayout">↪ 恢复 (Ctrl+Y)</button>
             </div>
             <small style="color:#aaa; display:block; margin-top:5px;">支持 Mac 的 Cmd+Z / Shift+Cmd+Z 恢复；在输入框内不会拦截快捷键。</small>
         </div>
@@ -446,67 +446,67 @@
             <label>保存到项目目录 (configs/*.json，需通过 http://localhost:8080 打开页面):</label>
             <input type="text" id="config-save-name" placeholder="配置名称，例如 dota-main" style="margin-top:6px;">
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                <button class="btn" onclick="saveConfigToProject()">💾 保存到项目</button>
-                <button class="btn btn-primary" onclick="refreshSavedConfigSelect()">🔄 刷新列表</button>
+                <button class="btn" data-click="saveConfigToProject">💾 保存到项目</button>
+                <button class="btn btn-primary" data-click="refreshSavedConfigSelect">🔄 刷新列表</button>
             </div>
         </div>
         <div class="control-group">
             <label>读取已保存的配置:</label>
             <select id="saved-config-select" style="width:100%; margin-top:6px; padding:4px; font-size:12px; background:#333; color:#fff; border:1px solid #555; border-radius:3px;"></select>
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                <button class="btn" onclick="loadSelectedProjectConfig()">📂 加载所选</button>
-                <button class="btn btn-danger" onclick="deleteSelectedProjectConfig()">🗑️ 删除所选</button>
+                <button class="btn" data-click="loadSelectedProjectConfig">📂 加载所选</button>
+                <button class="btn btn-danger" data-click="deleteSelectedProjectConfig">🗑️ 删除所选</button>
             </div>
         </div>
         <div class="control-group">
             <label>从文件导入 / 导出（换电脑、备份）:</label>
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                <button class="btn" onclick="exportConfigJsonFile()">📤 导出 JSON</button>
-                <button class="btn" onclick="document.getElementById('config-upload').click()">📁 从文件加载</button>
+                <button class="btn" data-click="exportConfigJsonFile">📤 导出 JSON</button>
+                <button class="btn" data-click="openConfigUpload">📁 从文件加载</button>
             </div>
-            <input type="file" id="config-upload" accept=".json" style="display:none" onchange="loadConfig(event)">
+            <input type="file" id="config-upload" accept=".json" style="display:none" data-change="loadConfig:event">
         </div>
         
         <div class="control-group">
-            <button class="btn btn-primary" onclick="showConfigLocation()">📂 配置说明</button>
+            <button class="btn btn-primary" data-click="showConfigLocation">📂 配置说明</button>
         </div>
         
         <div class="control-group">
-            <button class="btn btn-danger" onclick="hideControls()">❌ 隐藏面板</button>
+            <button class="btn btn-danger" data-click="hideControls">❌ 隐藏面板</button>
             <small style="color:#aaa; display:block; margin-top:5px;">隐藏后按 F2 显示</small>
         </div>
         
         <div class="control-group">
             <label>辅助吸附功能:</label>
             <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <button class="btn" onclick="enableAllSnap()">开启全部吸附</button>
-                <button class="btn btn-danger" onclick="disableAllSnap()">关闭全部吸附</button>
+                <button class="btn" data-click="enableAllSnap">开启全部吸附</button>
+                <button class="btn btn-danger" data-click="disableAllSnap">关闭全部吸附</button>
             </div>
             <div class="checkbox-row">
-                <input type="checkbox" id="snap-to-edges" checked onchange="toggleSnapToEdges()">
+                <input type="checkbox" id="snap-to-edges" checked data-change="toggleSnapToEdges">
                 <label for="snap-to-edges">吸附到边缘</label>
             </div>
             <div class="control-group" style="margin-left: 20px;" id="snap-edges-controls">
                 <label>边缘吸附阈值: <span id="snap-edges-threshold-val">10</span>px</label>
-                <input type="range" id="snap-edges-threshold" min="1" max="20" value="10" oninput="updateSnapEdgesThreshold(this.value)">
+                <input type="range" id="snap-edges-threshold" min="1" max="20" value="10" data-input="updateSnapEdgesThreshold:value">
             </div>
             <div class="checkbox-row">
-                <input type="checkbox" id="snap-to-center" checked onchange="toggleSnapToCenter()">
+                <input type="checkbox" id="snap-to-center" checked data-change="toggleSnapToCenter">
                 <label for="snap-to-center">吸附到中心</label>
             </div>
             <div class="control-group" style="margin-left: 20px;" id="snap-center-controls">
                 <label>中心吸附阈值: <span id="snap-center-threshold-val">10</span>px</label>
-                <input type="range" id="snap-center-threshold" min="1" max="20" value="10" oninput="updateSnapCenterThreshold(this.value)">
+                <input type="range" id="snap-center-threshold" min="1" max="20" value="10" data-input="updateSnapCenterThreshold:value">
             </div>
             <div class="checkbox-row">
-                <input type="checkbox" id="snap-to-assist" checked onchange="toggleSnapToAssist()">
+                <input type="checkbox" id="snap-to-assist" checked data-change="toggleSnapToAssist">
                 <label for="snap-to-assist">辅助排列</label>
             </div>
             <div class="control-group" style="margin-left: 20px;" id="snap-assist-controls">
                 <label>辅助排列距离: <span id="snap-distance-val">10</span>px</label>
-                <input type="range" id="snap-distance" min="0" max="100" value="10" oninput="updateSnapDistance(this.value)">
+                <input type="range" id="snap-distance" min="0" max="100" value="10" data-input="updateSnapDistance:value">
                 <label>辅助排列阈值: <span id="snap-assist-threshold-val">10</span>px</label>
-                <input type="range" id="snap-assist-threshold" min="1" max="20" value="10" oninput="updateSnapAssistThreshold(this.value)">
+                <input type="range" id="snap-assist-threshold" min="1" max="20" value="10" data-input="updateSnapAssistThreshold:value">
             </div>
         </div>
         
@@ -525,7 +525,7 @@
     <div id="add-key-hint" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.9); color:white; padding:20px; border-radius:10px; z-index:2000; text-align:center;">
         <h3>按任意键添加...</h3>
         <p>按下你想添加的按键</p>
-        <button class="btn btn-danger" onclick="cancelAddKey()">取消</button>
+        <button class="btn btn-danger" data-click="cancelAddKey">取消</button>
     </div>
     
     <!-- 按键编辑弹窗 -->
@@ -562,14 +562,14 @@
             <div class="form-row">
                 <div>
                     <div class="checkbox-row">
-                        <input type="checkbox" id="use-global-active" checked onchange="toggleKeyActiveColor()">
+                        <input type="checkbox" id="use-global-active" checked data-change="toggleKeyActiveColor">
                         <label for="use-global-active">使用全局按下颜色</label>
                     </div>
                     <input type="color" id="edit-key-active-color" value="#00ff00" disabled>
                 </div>
                 <div>
                     <div class="checkbox-row">
-                        <input type="checkbox" id="use-global-inactive" checked onchange="toggleKeyInactiveColor()">
+                        <input type="checkbox" id="use-global-inactive" checked data-change="toggleKeyInactiveColor">
                         <label for="use-global-inactive">使用全局未按下颜色</label>
                     </div>
                     <input type="color" id="edit-key-inactive-color" value="#333333" disabled>
@@ -581,8 +581,8 @@
                 <div style="flex: 1;">
                     <label>按键背景图片 (优先于全局背景):</label>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
-                        <input type="file" id="edit-key-bg-image" accept="image/*" onchange="loadKeyBackgroundImage(event)" style="flex: 1;">
-                        <button class="btn btn-danger" id="remove-key-bg-btn" onclick="removeKeyBackgroundImage()" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
+                        <input type="file" id="edit-key-bg-image" accept="image/*" data-change="loadKeyBackgroundImage:event" style="flex: 1;">
+                        <button class="btn btn-danger" id="remove-key-bg-btn" data-click="removeKeyBackgroundImage" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
                     </div>
                     <div id="key-bg-preview" style="margin-top: 8px; max-width: 100px; max-height: 60px; overflow: hidden; border-radius: 4px; display: none;">
                         <img id="key-bg-preview-img" style="width: 100%; height: 100%; object-fit: cover;">
@@ -594,11 +594,11 @@
             <div class="form-row" style="margin-top: 10px;">
                 <div style="flex: 1;">
                     <div class="checkbox-row">
-                        <input type="checkbox" id="use-global-opacity" checked onchange="toggleKeyOpacity()">
+                        <input type="checkbox" id="use-global-opacity" checked data-change="toggleKeyOpacity">
                         <label for="use-global-opacity">使用全局按键透明度</label>
                     </div>
                     <label>按键透明度: <span id="edit-key-opacity-val">20</span>%</label>
-                    <input type="range" id="edit-key-opacity" min="0" max="100" value="20" disabled oninput="updateKeyOpacityPreview(this.value)">
+                    <input type="range" id="edit-key-opacity" min="0" max="100" value="20" disabled data-input="updateKeyOpacityPreview:value">
                 </div>
             </div>
             
@@ -606,7 +606,7 @@
             <div class="form-row" id="key-bg-opacity-row" style="display: none;">
                 <div style="flex: 1;">
                     <label>背景图片透明度: <span id="edit-key-bg-opacity-val">0</span>%</label>
-                    <input type="range" id="edit-key-bg-opacity" min="0" max="100" value="0" oninput="updateKeyBgOpacityPreview(this.value)">
+                    <input type="range" id="edit-key-bg-opacity" min="0" max="100" value="0" data-input="updateKeyBgOpacityPreview:value">
                 </div>
             </div>
             
@@ -615,8 +615,8 @@
                 <div style="flex: 1;">
                     <label style="color: #aaa; font-size: 11px; display: block; margin-bottom: 8px;">背景设置模式:</label>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn" id="key-bg-mode-simple" onclick="setKeyBgMode('simple')" style="font-size: 11px; padding: 5px 12px; flex: 1;">简单 (自动填满)</button>
-                        <button class="btn btn-primary" id="key-bg-mode-advanced" onclick="setKeyBgMode('advanced')" style="font-size: 11px; padding: 5px 12px; flex: 1;">高级 (手动调整)</button>
+                        <button class="btn" id="key-bg-mode-simple" data-click="setKeyBgMode:simple" style="font-size: 11px; padding: 5px 12px; flex: 1;">简单 (自动填满)</button>
+                        <button class="btn btn-primary" id="key-bg-mode-advanced" data-click="setKeyBgMode:advanced" style="font-size: 11px; padding: 5px 12px; flex: 1;">高级 (手动调整)</button>
                     </div>
                 </div>
             </div>
@@ -628,22 +628,36 @@
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         <div style="flex: 1; min-width: 120px;">
                             <label>背景缩放: <span id="edit-key-bg-scale-val">100</span>%</label>
-                            <input type="range" id="edit-key-bg-scale" min="1" max="500" value="100" oninput="updateKeyBgScalePreview(this.value)">
+                            <input type="range" id="edit-key-bg-scale" min="1" max="500" value="100" data-input="updateKeyBgScalePreview:value">
                         </div>
                     </div>
                     <div style="margin-top: 8px; display: flex; gap: 10px;">
-                        <button class="btn" id="toggle-bg-view-mode" onclick="toggleKeyBgViewMode()" style="font-size: 10px; padding: 3px 8px;">显示模式: 完整背景</button>
+                        <button class="btn" id="toggle-bg-view-mode" data-click="toggleKeyBgViewMode" style="font-size: 10px; padding: 3px 8px;">显示模式: 完整背景</button>
                     </div>
                 </div>
             </div>
             
             <div class="btn-group">
-                <button class="btn" onclick="saveKeyEdit()">保存</button>
-                <button class="btn btn-danger" onclick="cancelKeyEdit()">取消</button>
+                <button class="btn" data-click="saveKeyEdit">保存</button>
+                <button class="btn btn-danger" data-click="cancelKeyEdit">取消</button>
             </div>
         </div>
     </div>
 
+    <script src="js/keyboard_pure_utils.js"></script>
+    <script src="js/keyboard_render_module.js"></script>
+    <script src="js/keyboard_snap_module.js"></script>
+    <script src="js/keyboard_snap_controls_module.js"></script>
+    <script src="js/keyboard_panel_module.js"></script>
+    <script src="js/keyboard_key_list_module.js"></script>
+    <script src="js/keyboard_history_module.js"></script>
+    <script src="js/keyboard_key_edit_module.js"></script>
+    <script src="js/keyboard_color_picker_module.js"></script>
+    <script src="js/keyboard_key_bg_module.js"></script>
+    <script src="js/keyboard_input_module.js"></script>
+    <script src="js/keyboard_mouse_helpers_module.js"></script>
+    <script src="js/keyboard_config_module.js"></script>
+    <script src="js/keyboard_network_module.js"></script>
     <script src="keyboard.js"></script>
 </body>
 </html>
