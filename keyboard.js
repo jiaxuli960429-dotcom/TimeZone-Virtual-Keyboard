@@ -31,7 +31,7 @@ let bgImage = null; // 背景图片
 let bgPosition = { x: 0, y: 0 }; // 背景图片位置
 let bgScale = 1.0; // 背景图片缩放
 let bgKeyOpacity = 0.8; // 按键区域的背景透明度
-let bgNonKeyOpacity = 0.2; // 非按键区域的背景透明度
+let bgNonKeyOpacity = 0.8; // 非按键区域的背景透明度
 let isDraggingBg = false; // 是否正在拖拽背景图片
 let bgDragOffset = { x: 0, y: 0 }; // 背景拖拽偏移
 
@@ -1701,7 +1701,7 @@ function removeBackground() {
     bgPosition = { x: 0, y: 0 };
     bgScale = 1.0;
     bgKeyOpacity = 0.8;
-    bgNonKeyOpacity = 0.2;
+    bgNonKeyOpacity = 0.8;
     
     // 重置UI
     document.getElementById('bg-scale').value = 100;
@@ -2213,19 +2213,19 @@ function applyConfig(config) {
     }
     const bgKeyOpacityEl = document.getElementById('bg-key-opacity');
     const bgKeyOpacityValEl = document.getElementById('bg-key-opacity-val');
-    if (bgKeyOpacityEl) bgKeyOpacityEl.value = Math.round(bgKeyOpacity * 100);
-    if (bgKeyOpacityValEl) bgKeyOpacityValEl.textContent = Math.round(bgKeyOpacity * 100);
+    if (bgKeyOpacityEl) bgKeyOpacityEl.value = Math.round((1 - bgKeyOpacity) * 100);
+    if (bgKeyOpacityValEl) bgKeyOpacityValEl.textContent = Math.round((1 - bgKeyOpacity) * 100);
 
     // 加载非按键区域背景透明度
     if (config.bgNonKeyOpacity !== undefined && !isNaN(config.bgNonKeyOpacity)) {
         bgNonKeyOpacity = parseFloat(config.bgNonKeyOpacity);
     } else {
-        bgNonKeyOpacity = 0.2;
+        bgNonKeyOpacity = 0.8;
     }
     const bgNonKeyOpacityEl = document.getElementById('bg-non-key-opacity');
     const bgNonKeyOpacityValEl = document.getElementById('bg-non-key-opacity-val');
-    if (bgNonKeyOpacityEl) bgNonKeyOpacityEl.value = Math.round(bgNonKeyOpacity * 100);
-    if (bgNonKeyOpacityValEl) bgNonKeyOpacityValEl.textContent = Math.round(bgNonKeyOpacity * 100);
+    if (bgNonKeyOpacityEl) bgNonKeyOpacityEl.value = Math.round((1 - bgNonKeyOpacity) * 100);
+    if (bgNonKeyOpacityValEl) bgNonKeyOpacityValEl.textContent = Math.round((1 - bgNonKeyOpacity) * 100);
 
     // 更新按键列表显示
     updateKeyList();
