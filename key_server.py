@@ -7,10 +7,10 @@ DOTA 键盘按键捕获服务
 1) 在系统层捕获全局键盘事件（即浏览器失焦也可捕获）。
 2) 通过 WebSocket 推送给前端页面（ws://localhost:8765）。
 
-设计原则：
-- 启动自检：缺失依赖时自动安装并重启自身。
-- 低侵入：主线程跑 WebSocket，后台线程跑键盘监听。
-- 容错：客户端断连自动清理，不因单个客户端异常影响整体。
+设计目标（超安全版本）：
+- 启动自检：缺失依赖时自动安装并重启。
+- 兼容优先：尽量减少对第三方库内部路径的依赖。
+- 可恢复：网络/客户端异常不影响主服务持续运行。
 """
 
 from __future__ import annotations
@@ -26,8 +26,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Set
-
+from typing import Any
 
 # ==================== 常量配置 ====================
 WS_HOST = "localhost"
@@ -37,6 +36,12 @@ REQUIRED_PACKAGES = ("pynput", "websockets")
 QUEUE_POLL_INTERVAL_SEC = 0.01
 
 
+def log(message: str) -> None:
+    """统一日志输出格式，便于排查问题。"""
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts}] {message}")
+
+
 # ==================== 启动前依赖检查 ====================
 def ensure_dependencies() -> None:
     """检查依赖，缺失时自动安装并重启当前进程。"""
@@ -44,21 +49,20 @@ def ensure_dependencies() -> None:
     if not missing:
         return
 
-    print(f"检测到缺失依赖: {', '.join(missing)}")
-    print("正在自动安装，请稍候...")
+    log(f"检测到缺失依赖: {', '.join(missing)}")
+    log("正在自动安装，请稍候...")
 
-    install_cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        *missing,
-        "-i",
-        PIP_MIRROR,
-    ]
-    subprocess.check_call(install_cmd)
+    install_cmd_base = [sys.executable, "-m", "pip", "install", *missing]
 
-    print("依赖安装完成，正在重启服务...")
+    try:
+        # 优先使用镜像源（对国内网络更友好）
+        subprocess.check_call([*install_cmd_base, "-i", PIP_MIRROR])
+    except subprocess.CalledProcessError:
+        # 兜底回退到默认源，避免镜像不可用导致启动失败
+        log("镜像源安装失败，尝试使用默认 PyPI 源...")
+        subprocess.check_call(install_cmd_base)
+
+    log("依赖安装完成，正在重启服务...")
     os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
@@ -67,12 +71,11 @@ ensure_dependencies()
 # 依赖可用后再导入
 from pynput import keyboard
 import websockets
-from websockets.server import WebSocketServerProtocol
 
 
 # ==================== 全局状态 ====================
 key_event_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
-connected_clients: Set[WebSocketServerProtocol] = set()
+connected_clients: set[Any] = set()
 
 
 def kill_process_using_port(port: int) -> None:
@@ -80,7 +83,7 @@ def kill_process_using_port(port: int) -> None:
     if platform.system().lower() != "windows":
         return
 
-    cmd = f'netstat -ano | findstr :{port}'
+    cmd = f"netstat -ano | findstr :{port}"
     try:
         result = subprocess.check_output(
             cmd,
@@ -91,15 +94,18 @@ def kill_process_using_port(port: int) -> None:
     except subprocess.CalledProcessError:
         return
 
+    current_pid = str(os.getpid())
     pid_pattern = re.compile(r"\s+(\d+)\s*$")
-    pids = set()
+    pids: set[str] = set()
 
     for line in result.splitlines():
         if f":{port}" not in line or "LISTENING" not in line:
             continue
         match = pid_pattern.search(line)
         if match:
-            pids.add(match.group(1))
+            pid = match.group(1)
+            if pid != current_pid:
+                pids.add(pid)
 
     for pid in pids:
         subprocess.call(["taskkill", "/F", "/PID", pid])
@@ -152,13 +158,11 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
         "\\": "Backslash",
     }
 
-    # 字符键
     if isinstance(key, keyboard.KeyCode) and key.char:
         char = key.char.lower()
         if char in key_map:
             return key_map[char]
 
-    # 特殊键（Key.xxx）
     key_name = str(key).replace("Key.", "").lower()
 
     modifier_map = {
@@ -184,7 +188,6 @@ def get_key_code(key: keyboard.Key | keyboard.KeyCode) -> str:
     if key_name in modifier_map:
         return modifier_map[key_name]
 
-    # 兜底返回字符串，避免事件丢失
     return str(key)
 
 
@@ -204,7 +207,7 @@ async def broadcast_to_clients(message: str) -> None:
     if not connected_clients:
         return
 
-    disconnected: Set[WebSocketServerProtocol] = set()
+    disconnected: set[Any] = set()
 
     for client in list(connected_clients):
         try:
@@ -216,9 +219,9 @@ async def broadcast_to_clients(message: str) -> None:
         connected_clients.difference_update(disconnected)
 
 
-async def handle_client(websocket: WebSocketServerProtocol) -> None:
+async def handle_client(websocket: Any) -> None:
     """处理客户端连接与心跳消息。"""
-    print(f"客户端已连接: {websocket.remote_address}")
+    log(f"客户端已连接: {websocket.remote_address}")
     connected_clients.add(websocket)
 
     try:
@@ -228,13 +231,13 @@ async def handle_client(websocket: WebSocketServerProtocol) -> None:
             except json.JSONDecodeError:
                 continue
 
-            if data.get("type") == "ping":
+            if isinstance(data, dict) and data.get("type") == "ping":
                 await websocket.send(json.dumps({"type": "pong"}))
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
         connected_clients.discard(websocket)
-        print(f"客户端已断开: {websocket.remote_address}")
+        log(f"客户端已断开: {websocket.remote_address}")
 
 
 async def process_key_events() -> None:
@@ -258,18 +261,13 @@ async def process_key_events() -> None:
 
 async def start_server() -> None:
     """启动 WebSocket 服务与事件处理协程。"""
-    print("=" * 50)
-    print("    DOTA Keyboard Capture Service")
-    print("=" * 50)
-    print()
-    print("功能：捕获全局键盘事件，通过 WebSocket 发送给浏览器")
-    print("解决：浏览器失去焦点时无法捕获按键")
-    print()
-    print(f"WebSocket 地址: ws://{WS_HOST}:{WS_PORT}")
-    print()
-    print("按 Ctrl+C 停止服务")
-    print("=" * 50)
-    print()
+    log("=" * 50)
+    log("DOTA Keyboard Capture Service")
+    log("=" * 50)
+    log("功能：捕获全局键盘事件，通过 WebSocket 发送给浏览器")
+    log("解决：浏览器失去焦点时无法捕获按键")
+    log(f"WebSocket 地址: ws://{WS_HOST}:{WS_PORT}")
+    log("按 Ctrl+C 停止服务")
 
     asyncio.create_task(process_key_events())
 
@@ -300,10 +298,14 @@ def main() -> None:
     try:
         asyncio.run(start_server())
     except KeyboardInterrupt:
-        print("\n服务已停止")
+        log("服务已停止")
         sys.exit(0)
+    except OSError as exc:
+        # 更明确地提示端口占用类问题
+        log(f"网络启动失败（可能端口占用）: {exc}")
+        input("按 Enter 退出")
     except Exception as exc:
-        print(f"错误: {exc}")
+        log(f"错误: {exc}")
         input("按 Enter 退出")
 
 
