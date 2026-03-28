@@ -507,8 +507,22 @@ function setObsFlowStatus(message, tone = '') {
 
 function updateObsPreviewUiState() {
     const btn = byId('obs-back-to-current-btn');
-    if (!btn) return;
-    btn.disabled = !(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+    const previewing = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+    if (btn) btn.disabled = !previewing;
+
+    const actionBtn = byId('obs-primary-action-btn');
+    if (actionBtn) {
+        actionBtn.textContent = previewing ? '🔗 复制 OBS 地址' : '⚡ 保存并复制 OBS 地址';
+        actionBtn.classList.toggle('btn-primary', !previewing);
+    }
+}
+
+function hasSavedProfile(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return false;
+    const savedSelect = byId('saved-config-select');
+    if (!savedSelect) return false;
+    return Array.from(savedSelect.options || []).some((opt) => opt.value === safeName);
 }
 
 function getObsProfileNameForOverlayLink() {
@@ -657,6 +671,25 @@ async function quickSaveAndCopyObsUrl() {
     const raw = String(input.value || '').trim();
     const profileName = raw || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
     input.value = profileName;
+    const previewing = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+
+    if (previewing) {
+        const copiedUrl = await copyObsOverlayUrl(false);
+        setObsFlowStatus('当前为预览态，已复制 OBS 地址（未保存）：' + copiedUrl, 'success');
+        return;
+    }
+
+    if (hasSavedProfile(profileName)) {
+        const ok = confirm(
+            '将覆盖已有配置：configs/' +
+                profileName +
+                '.json\n\n是否继续保存并复制 OBS 地址？'
+        );
+        if (!ok) {
+            setObsFlowStatus('已取消覆盖，未保存。');
+            return;
+        }
+    }
 
     const saved = await networkModule.saveConfigToProject({
         nameInput: { value: profileName },

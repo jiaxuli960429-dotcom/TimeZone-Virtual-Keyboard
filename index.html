@@ -333,16 +333,6 @@
             font-weight: 700;
         }
 
-        .obs-flow-badge {
-            font-size: 11px;
-            border-radius: 999px;
-            border: 1px solid #ffd3df;
-            background: #fff;
-            color: #9e3d5e;
-            padding: 3px 10px;
-            white-space: nowrap;
-        }
-
         .obs-flow-row {
             margin-top: 8px;
             display: flex;
@@ -857,7 +847,6 @@
                 <div class="obs-fixed-card">
                     <div class="obs-flow-head">
                         <label>OBS 链接生成</label>
-                        <span class="obs-flow-badge">推荐流程：选配置 → 一键保存并复制</span>
                     </div>
                     <div class="obs-flow-row">
                         <span class="obs-label">配置名</span>
@@ -866,7 +855,7 @@
                             <option value="">从已保存配置中选择（可选）</option>
                         </select>
                         <button class="btn" id="obs-back-to-current-btn" data-click="restoreObsCurrentConfig" disabled>↩ 回到当前编辑态</button>
-                        <button class="btn btn-primary" data-click="quickSaveAndCopyObsUrl">⚡ 一键保存并复制 OBS 地址</button>
+                        <button class="btn btn-primary" id="obs-primary-action-btn" data-click="quickSaveAndCopyObsUrl">⚡ 保存并复制 OBS 地址</button>
                     </div>
                     <div class="obs-url-row" style="margin-top:6px;">
                         <input type="text" id="obs-overlay-url" readonly value="">
