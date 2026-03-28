@@ -23,6 +23,13 @@ let isAddingKey = false; // 是否正在添加按键
 let draggedKey = null; // 正在拖拽的按键
 let dragOffset = { x: 0, y: 0 };
 let canvas, ctx;
+/** Coalesced requestAnimationFrame id for canvas redraws (idle = no rAF loop). */
+let canvasRafId = null;
+/** Single scheduled WebSocket reconnect to avoid stacked timers on rapid disconnects. */
+let wsReconnectTimerId = null;
+/** Fade-out timer for the connection status chip; cleared before rescheduling. */
+let wsStatusFadeTimerId = null;
+
 let editingKey = null; // 当前正在编辑的按键
 let editingKeyBackup = null; // 编辑前的按键备份，用于取消操作
 
@@ -129,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     updateKeyList();
-    render();
+    invalidateCanvas();
 
     // 键盘事件
     window.addEventListener('keydown', handleKeyDown);
@@ -168,7 +175,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==================== 渲染 ====================
+function invalidateCanvas() {
+    if (canvasRafId !== null) return;
+    canvasRafId = requestAnimationFrame(render);
+}
+
 function render() {
+    canvasRafId = null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // 绘制背景图片（分层透明度效果）
@@ -235,7 +248,15 @@ function render() {
     // 绘制辅助对齐线
     drawSnapLines();
 
-    requestAnimationFrame(render);
+    const needsNextFrame =
+        draggedKey !== null ||
+        resizingKey !== null ||
+        isDraggingBg ||
+        isDraggingKeyBg ||
+        snapLines.length > 0;
+    if (needsNextFrame) {
+        invalidateCanvas();
+    }
 }
 
 // 绘制辅助对齐线
@@ -656,6 +677,7 @@ function handleKeyDown(e) {
 
     // 本地模式下的原有逻辑
     pressedKeys.add(e.code);
+    invalidateCanvas();
 }
 
 function handleKeyUp(e) {
@@ -670,6 +692,7 @@ function handleKeyUp(e) {
     }
 
     pressedKeys.delete(e.code);
+    invalidateCanvas();
 }
 
 // ==================== 鼠标交互 ====================
@@ -780,6 +803,7 @@ function handleMouseDown(e) {
             resizeHandle = handle;
             resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
             clickedOnKey = true;
+            invalidateCanvas();
             return;
         }
 
@@ -790,6 +814,7 @@ function handleMouseDown(e) {
             resizeHandle = edge;
             resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
             clickedOnKey = true;
+            invalidateCanvas();
             return;
         }
 
@@ -821,6 +846,7 @@ function handleMouseDown(e) {
             dragOffset.x = x - clickedKey.x;
             dragOffset.y = y - clickedKey.y;
         }
+        invalidateCanvas();
         return;
     }
 
@@ -833,6 +859,7 @@ function handleMouseDown(e) {
         keyBgDragOffset.x = x - (editingKey.x + (editingKey.bgOffsetX || 0));
         keyBgDragOffset.y = y - (editingKey.y + (editingKey.bgOffsetY || 0));
         canvas.style.cursor = 'move';
+        invalidateCanvas();
         return;
     }
 
@@ -848,6 +875,7 @@ function handleMouseDown(e) {
         bgDragOffset.y = y - bgPosition.y;
         canvas.style.cursor = 'move';
     }
+    invalidateCanvas();
 }
 
 function handleMouseMove(e) {
@@ -914,6 +942,7 @@ function handleMouseMove(e) {
         // 更新编辑菜单中的数值
         updateEditMenuValues();
 
+        invalidateCanvas();
         return;
     }
 
@@ -942,6 +971,7 @@ function handleMouseMove(e) {
         // 更新编辑菜单中的数值
         updateEditMenuValues();
 
+        invalidateCanvas();
         return;
     }
 
@@ -950,6 +980,7 @@ function handleMouseMove(e) {
         bgPosition.x = x - bgDragOffset.x;
         bgPosition.y = y - bgDragOffset.y;
         
+        invalidateCanvas();
         return;
     }
 
@@ -958,6 +989,7 @@ function handleMouseMove(e) {
         draggedKeyBg.bgOffsetX = x - draggedKeyBg.x - keyBgDragOffset.x;
         draggedKeyBg.bgOffsetY = y - draggedKeyBg.y - keyBgDragOffset.y;
         
+        invalidateCanvas();
         return;
     }
 
@@ -1041,6 +1073,7 @@ function handleMouseUp() {
         draggedKeyBg = null;
         canvas.style.cursor = 'default';
     }
+    invalidateCanvas();
 }
 
 // 处理鼠标滚轮事件
@@ -1081,6 +1114,7 @@ function handleMouseWheel(e) {
             document.getElementById('edit-key-bg-scale').value = Math.round(newScale * 100);
             document.getElementById('edit-key-bg-scale-val').textContent = Math.round(newScale * 100);
         }
+        invalidateCanvas();
     }
 }
 
@@ -1195,6 +1229,7 @@ function openKeyEdit(key) {
     }
 
     document.getElementById('key-edit-modal').classList.remove('hidden');
+    invalidateCanvas();
 }
 
 // 设置按键背景图片UI
@@ -1263,6 +1298,7 @@ function loadKeyBackgroundImage(event) {
                 editingKey.bgMode = 'advanced';
             }
             updateKeyBgModeUI();
+            invalidateCanvas();
         };
         img.src = imageData;
     };
@@ -1296,6 +1332,7 @@ function removeKeyBackgroundImage() {
     bgOpacityRow.style.display = 'none';
     bgModeRow.style.display = 'none';
     bgAdvancedRow.style.display = 'none';
+    invalidateCanvas();
 }
 
 // 切换按键透明度使用全局/自定义
@@ -1323,6 +1360,7 @@ function toggleKeyOpacity() {
             editingKey.opacity = (100 - parseInt(opacityInput.value)) / 100;
         }
     }
+    invalidateCanvas();
 }
 
 // 更新按键透明度预览
@@ -1332,6 +1370,7 @@ function updateKeyOpacityPreview(value) {
         // 滑块值 0=不透明, 100=透明，转换为 opacity 值
         editingKey.opacity = (100 - parseInt(value)) / 100;
     }
+    invalidateCanvas();
 }
 
 // 更新编辑菜单中的数值
@@ -1354,6 +1393,7 @@ function updateKeyBgOpacityPreview(value) {
         // 滑块值 0=不透明, 100=透明，转换为 opacity 值
         editingKey.bgOpacity = (100 - parseInt(value)) / 100;
     }
+    invalidateCanvas();
 }
 
 // 更新按键背景缩放预览
@@ -1362,6 +1402,7 @@ function updateKeyBgScalePreview(value) {
     if (editingKey) {
         editingKey.bgScale = parseInt(value) / 100;
     }
+    invalidateCanvas();
 }
 
 // 更新按键背景位置预览
@@ -1374,6 +1415,7 @@ function updateKeyBgPositionPreview() {
         editingKey.bgOffsetX = x;
         editingKey.bgOffsetY = y;
     }
+    invalidateCanvas();
 }
 
 // 重置按键背景变换
@@ -1385,6 +1427,7 @@ function resetKeyBgTransform() {
         editingKey.bgOffsetX = 0;
         editingKey.bgOffsetY = 0;
     }
+    invalidateCanvas();
 }
 
 // 切换独立背景显示模式
@@ -1394,6 +1437,7 @@ function toggleKeyBgViewMode() {
     if (btn) {
         btn.textContent = keyBgViewMode === 'full' ? '显示模式: 完整背景' : '显示模式: 按键内裁剪';
     }
+    invalidateCanvas();
 }
 
 // 设置背景设置模式
@@ -1410,6 +1454,7 @@ function setKeyBgMode(mode) {
         editingKey.bgOffsetY = 0;
         // 简单模式下不使用bgScale，变形填满在drawKey中实时计算
     }
+    invalidateCanvas();
 }
 
 // 更新背景设置模式UI
@@ -1480,6 +1525,7 @@ function closeKeyEdit() {
     document.getElementById('key-edit-modal').classList.add('hidden');
     editingKey = null;
     editingKeyBackup = null;
+    invalidateCanvas();
 }
 
 function toggleKeyActiveColor() {
@@ -1492,6 +1538,7 @@ function toggleKeyActiveColor() {
         editingKey.activeColor = colorInput.value;
         editingKey._previewPressed = true;
     }
+    invalidateCanvas();
 }
 
 function toggleKeyInactiveColor() {
@@ -1504,6 +1551,7 @@ function toggleKeyInactiveColor() {
         editingKey.inactiveColor = colorInput.value;
         delete editingKey._previewPressed;
     }
+    invalidateCanvas();
 }
 
 function handleKeyActiveColorPreview(e) {
@@ -1512,6 +1560,7 @@ function handleKeyActiveColorPreview(e) {
     const color = e.target.value;
     editingKey.activeColor = color;
     editingKey._previewPressed = true;
+    invalidateCanvas();
 }
 
 function handleKeyInactiveColorPreview(e) {
@@ -1520,6 +1569,7 @@ function handleKeyInactiveColorPreview(e) {
     const color = e.target.value;
     editingKey.inactiveColor = color;
     delete editingKey._previewPressed;
+    invalidateCanvas();
 }
 
 function saveKeyEdit() {
@@ -1616,6 +1666,7 @@ function hideControls() {
 function updateOpacity(val) {
     CONFIG.keyOpacity = (100 - val) / 100;
     document.getElementById('key-opacity-val').textContent = val;
+    invalidateCanvas();
 }
 
 // ==================== 背景图片功能 ====================
@@ -1634,6 +1685,7 @@ function loadBackground(event) {
             document.getElementById('remove-bg-btn').style.display = 'inline-block';
             // 显示背景相关控件，隐藏按键透明度
             updateOpacityControlsVisibility(true);
+            invalidateCanvas();
         };
         bgImage.src = e.target.result;
     };
@@ -1669,16 +1721,19 @@ function updateOpacityControlsVisibility(hasBackground) {
 function updateBgScale(val) {
     bgScale = parseInt(val) / 100;
     document.getElementById('bg-scale-val').textContent = val;
+    invalidateCanvas();
 }
 
 function updateBgKeyOpacity(val) {
     bgKeyOpacity = (100 - val) / 100;
     document.getElementById('bg-key-opacity-val').textContent = val;
+    invalidateCanvas();
 }
 
 function updateBgNonKeyOpacity(val) {
     bgNonKeyOpacity = (100 - val) / 100;
     document.getElementById('bg-non-key-opacity-val').textContent = val;
+    invalidateCanvas();
 }
 
 function removeBackground() {
@@ -1707,6 +1762,7 @@ function removeBackground() {
     
     // 隐藏背景相关控件，显示按键透明度
     updateOpacityControlsVisibility(false);
+    invalidateCanvas();
 }
 
 // ==================== 颜色选择器功能 ====================
@@ -1848,7 +1904,8 @@ function openColorPicker(target) {
     
     // 显示弹窗
     modal.classList.remove('hidden');
-    
+    invalidateCanvas();
+
     // 添加实时预览监听
     input.addEventListener('input', handleColorPreview);
     
@@ -1867,6 +1924,7 @@ function handleColorPreview(e) {
         CONFIG.inactiveColor = color;
         document.getElementById('inactive-color-preview').style.backgroundColor = color;
     }
+    invalidateCanvas();
 }
 
 function handleColorChange(e) {
@@ -1934,6 +1992,7 @@ function closeColorPicker() {
     currentColorTarget = null;
     originalColor = null;
     lastSelectedColor = null;
+    invalidateCanvas();
 }
 
 // ==================== 按键管理 ====================
@@ -1973,12 +2032,14 @@ function addKey(code, label) {
 function removeKey(code) {
     keys = keys.filter(k => k.code !== code);
     updateKeyList();
+    invalidateCanvas();
 }
 
 function clearAllKeys() {
     if (confirm('确定要清空所有按键吗？')) {
         keys = [];
         updateKeyList();
+        invalidateCanvas();
     }
 }
 
@@ -2109,11 +2170,13 @@ function applyConfig(config) {
                 img.onload = () => {
                     key._bgImageObj = img;
                     console.log('按键背景加载成功:', key.code);
+                    invalidateCanvas();
                 };
                 img.onerror = () => {
                     console.warn('按键背景加载失败:', key.code);
                     // 保留bgImage配置，但标记为加载失败
                     key._bgImageLoadFailed = true;
+                    invalidateCanvas();
                 };
                 img.src = key.bgImage;
             }
@@ -2153,10 +2216,12 @@ function applyConfig(config) {
             if (removeBgBtn) removeBgBtn.style.display = 'inline-block';
             // 显示背景相关控件，隐藏按键透明度
             updateOpacityControlsVisibility(true);
+            invalidateCanvas();
         };
         bgImage.onerror = () => {
             console.warn('全局背景图片加载失败');
             bgImage = null;
+            invalidateCanvas();
         };
         bgImage.src = config.bgImage;
     } else {
@@ -2170,6 +2235,7 @@ function applyConfig(config) {
         }
         if (removeBgBtn) removeBgBtn.style.display = 'none';
         updateOpacityControlsVisibility(false);
+        invalidateCanvas();
     }
 
     // 加载背景位置和缩放
@@ -2219,6 +2285,7 @@ function applyConfig(config) {
     updateKeyList();
 
     console.log('配置加载完成');
+    invalidateCanvas();
 }
 
 // 显示配置保存位置
@@ -2258,6 +2325,10 @@ function connectWebSocket() {
         ws = new WebSocket('ws://localhost:8765');
 
         ws.onopen = () => {
+            if (wsReconnectTimerId !== null) {
+                clearTimeout(wsReconnectTimerId);
+                wsReconnectTimerId = null;
+            }
             console.log('WebSocket Connected - Global key capture enabled');
             wsConnected = true;
             useWebSocket = true;
@@ -2277,8 +2348,13 @@ function connectWebSocket() {
             console.log('WebSocket disconnected');
             wsConnected = false;
             showConnectionStatus(false);
-            // Try to reconnect in 3 seconds
-            setTimeout(connectWebSocket, 3000);
+            if (wsReconnectTimerId !== null) {
+                clearTimeout(wsReconnectTimerId);
+            }
+            wsReconnectTimerId = setTimeout(() => {
+                wsReconnectTimerId = null;
+                connectWebSocket();
+            }, 3000);
         };
 
         ws.onerror = (error) => {
@@ -2306,10 +2382,10 @@ function handleWebSocketMessage(data) {
         pressedKeys.clear();
         data.pressed_keys.forEach(code => pressedKeys.add(code));
     }
+    invalidateCanvas();
 }
 
 function showConnectionStatus(connected) {
-    // 显示连接状态
     let statusDiv = document.getElementById('ws-status');
     if (!statusDiv) {
         statusDiv = document.createElement('div');
@@ -2327,19 +2403,25 @@ function showConnectionStatus(connected) {
         document.body.appendChild(statusDiv);
     }
 
+    if (wsStatusFadeTimerId !== null) {
+        clearTimeout(wsStatusFadeTimerId);
+        wsStatusFadeTimerId = null;
+    }
+    statusDiv.style.opacity = '1';
+
     if (connected) {
-        statusDiv.textContent = 'Global Capture: Connected';
+        statusDiv.textContent = '全局按键捕获：已连接';
         statusDiv.style.background = 'rgba(0, 200, 0, 0.8)';
         statusDiv.style.color = 'white';
     } else {
-        statusDiv.textContent = 'Global Capture: Not Connected (start key_server.py)';
+        statusDiv.textContent = '全局按键捕获：未连接（请运行 key_server.py）';
         statusDiv.style.background = 'rgba(200, 0, 0, 0.8)';
         statusDiv.style.color = 'white';
     }
 
-    // 5秒后淡出
-    setTimeout(() => {
+    wsStatusFadeTimerId = setTimeout(() => {
         statusDiv.style.opacity = '0.5';
+        wsStatusFadeTimerId = null;
     }, 5000);
 }
 
