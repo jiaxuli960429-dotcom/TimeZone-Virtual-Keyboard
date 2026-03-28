@@ -109,6 +109,8 @@ const colorPickerModule = window.KeyboardColorPickerModule;
 const keyBgModule = window.KeyboardKeyBgModule;
 const inputModule = window.KeyboardInputModule;
 const mouseHelpersModule = window.KeyboardMouseHelpersModule;
+const mouseDownModule = window.KeyboardMouseDownModule;
+const mouseMoveModule = window.KeyboardMouseMoveModule;
 const configModule = window.KeyboardConfigModule;
 const networkModule = window.KeyboardNetworkModule;
 
@@ -125,6 +127,8 @@ if (
     !keyBgModule ||
     !inputModule ||
     !mouseHelpersModule ||
+    !mouseDownModule ||
+    !mouseMoveModule ||
     !configModule ||
     !networkModule
 ) {
@@ -311,6 +315,92 @@ function mouseHelpersCtx() {
         CONFIG,
         RESIZE_HANDLE_SIZE,
         RESIZE_EDGE_THRESHOLD
+    };
+}
+
+function mouseDownCtx() {
+    return {
+        canvas,
+        CONFIG,
+        dragOffset,
+        bgPosition,
+        bgDragOffset,
+        keyBgDragOffset,
+        getKeys: () => keys,
+        getEditingKey: () => editingKey,
+        getBgImage: () => bgImage,
+        getResizeHandle,
+        getEdgePosition,
+        beginLayoutGesture,
+        updateKeyList,
+        invalidateCanvas,
+        setSelectedKey: (value) => {
+            selectedKey = value;
+        },
+        setDragCandidateKey: (value) => {
+            dragCandidateKey = value;
+        },
+        setDragCandidateFrom: (value) => {
+            dragCandidateFrom = value;
+        },
+        setResizingKey: (value) => {
+            resizingKey = value;
+        },
+        setResizeHandle: (value) => {
+            resizeHandle = value;
+        },
+        setResizeStart: (value) => {
+            resizeStart = value;
+        },
+        setIsDraggingBg: (value) => {
+            isDraggingBg = value;
+        },
+        setIsDraggingKeyBg: (value) => {
+            isDraggingKeyBg = value;
+        },
+        setDraggedKeyBg: (value) => {
+            draggedKeyBg = value;
+        }
+    };
+}
+
+function mouseMoveCtx() {
+    return {
+        canvas,
+        CONFIG,
+        dragOffset,
+        bgPosition,
+        bgDragOffset,
+        keyBgDragOffset,
+        CLICK_DRAG_THRESHOLD_PX,
+        RESIZE_EDGE_THRESHOLD,
+        calculateSnap,
+        beginLayoutGesture,
+        updateEditMenuValues,
+        invalidateCanvas,
+        getResizeHandle,
+        getEdgePosition,
+        updateCursor,
+        getKeys: () => keys,
+        getBgImage: () => bgImage,
+        getDragCandidateKey: () => dragCandidateKey,
+        setDragCandidateKey: (value) => {
+            dragCandidateKey = value;
+        },
+        getDragCandidateFrom: () => dragCandidateFrom,
+        getDraggedKey: () => draggedKey,
+        setDraggedKey: (value) => {
+            draggedKey = value;
+        },
+        getResizingKey: () => resizingKey,
+        getResizeHandleState: () => resizeHandle,
+        getResizeStart: () => resizeStart,
+        setSnapLines: (lines) => {
+            snapLines = lines;
+        },
+        getIsDraggingBg: () => isDraggingBg,
+        getIsDraggingKeyBg: () => isDraggingKeyBg,
+        getDraggedKeyBg: () => draggedKeyBg
     };
 }
 
@@ -729,306 +819,11 @@ function updateCursor(position) {
 }
 
 function handleMouseDown(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (e.target === canvas && typeof canvas.focus === 'function') {
-        try {
-            canvas.focus({ preventScroll: true });
-        } catch (_) {
-            canvas.focus();
-        }
-    }
-
-    // 从后往前找，优先选中上层的按键
-    let clickedOnKey = false;
-    let clickedKey = null;
-    for (let i = keys.length - 1; i >= 0; i--) {
-        const key = keys[i];
-        const w = key.width || CONFIG.keySize;
-        const h = key.height || CONFIG.keySize;
-
-        // 检查是否在手柄上
-        const handle = getResizeHandle(key, x, y);
-        if (handle) {
-            resizingKey = key;
-            resizeHandle = handle;
-            resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
-            clickedOnKey = true;
-            selectedKey = key;
-            beginLayoutGesture();
-            updateKeyList();
-            invalidateCanvas();
-            return;
-        }
-
-        // 检查是否在边缘
-        const edge = getEdgePosition(key, x, y);
-        if (edge) {
-            resizingKey = key;
-            resizeHandle = edge;
-            resizeStart = { x: x, y: y, w: w, h: h, keyX: key.x, keyY: key.y };
-            clickedOnKey = true;
-            selectedKey = key;
-            beginLayoutGesture();
-            updateKeyList();
-            invalidateCanvas();
-            return;
-        }
-
-        // 检查是否在按键内部
-        if (x >= key.x && x <= key.x + w && y >= key.y && y <= key.y + h) {
-            clickedKey = key;
-            clickedOnKey = true;
-            break;
-        }
-    }
-
-    // 如果点击了按键（本体，非手柄/边）
-    if (clickedOnKey && clickedKey) {
-        if (editingKey) {
-            if (clickedKey === editingKey) {
-                selectedKey = clickedKey;
-                dragCandidateKey = clickedKey;
-                dragCandidateFrom = { x, y };
-                dragOffset.x = x - clickedKey.x;
-                dragOffset.y = y - clickedKey.y;
-            } else {
-                return;
-            }
-        } else {
-            selectedKey = clickedKey;
-            dragCandidateKey = clickedKey;
-            dragCandidateFrom = { x, y };
-            dragOffset.x = x - clickedKey.x;
-            dragOffset.y = y - clickedKey.y;
-        }
-        updateKeyList();
-        invalidateCanvas();
-        return;
-    }
-
-    if (editingKey) {
-        // 编辑菜单打开期间，始终保持被编辑按键的选中视觉
-        selectedKey = editingKey;
-    } else {
-        selectedKey = null;
-    }
-    updateKeyList();
-
-    // 如果没有点击到按键
-    // 检查是否正在编辑某个按键且有独立背景图片
-    if (editingKey && editingKey.bgImage && editingKey._bgImageObj) {
-        // 在空白区域拖动独立背景
-        isDraggingKeyBg = true;
-        draggedKeyBg = editingKey;
-        keyBgDragOffset.x = x - (editingKey.x + (editingKey.bgOffsetX || 0));
-        keyBgDragOffset.y = y - (editingKey.y + (editingKey.bgOffsetY || 0));
-        canvas.style.cursor = 'move';
-        invalidateCanvas();
-        return;
-    }
-
-    // 编辑菜单打开时，即使没有独立背景，也禁用全局背景的拖动
-    if (editingKey) {
-        // 兜底：任何空白点击都不应清掉编辑态选中高亮
-        selectedKey = editingKey;
-        return;
-    }
-
-    // 如果没有点击到按键，且有全局背景图片，则拖拽全局背景
-    if (bgImage) {
-        isDraggingBg = true;
-        bgDragOffset.x = x - bgPosition.x;
-        bgDragOffset.y = y - bgPosition.y;
-        canvas.style.cursor = 'move';
-    }
-    invalidateCanvas();
+    mouseDownModule.handleMouseDown(mouseDownCtx(), e);
 }
 
 function handleMouseMove(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (dragCandidateKey && !draggedKey) {
-        const dx = x - dragCandidateFrom.x;
-        const dy = y - dragCandidateFrom.y;
-        if (dx * dx + dy * dy >= CLICK_DRAG_THRESHOLD_PX * CLICK_DRAG_THRESHOLD_PX) {
-            draggedKey = dragCandidateKey;
-            dragCandidateKey = null;
-            beginLayoutGesture();
-        }
-    }
-
-    // 如果正在调整大小
-    if (resizingKey) {
-        const dx = x - resizeStart.x;
-        const dy = y - resizeStart.y;
-
-        let newW = resizeStart.w;
-        let newH = resizeStart.h;
-        let newX = resizeStart.keyX;
-        let newY = resizeStart.keyY;
-
-        // 根据调整方向计算新的大小和位置
-        switch (resizeHandle) {
-            case 'se':
-            case 'e':
-                newW = Math.max(20, resizeStart.w + dx);
-                break;
-            case 'sw':
-            case 'w':
-                newW = Math.max(20, resizeStart.w - dx);
-                newX = resizeStart.keyX + dx;
-                break;
-            case 'ne':
-            case 'n':
-                newH = Math.max(20, resizeStart.h - dy);
-                newY = resizeStart.keyY + dy;
-                break;
-            case 'nw':
-                newW = Math.max(20, resizeStart.w - dx);
-                newH = Math.max(20, resizeStart.h - dy);
-                newX = resizeStart.keyX + dx;
-                newY = resizeStart.keyY + dy;
-                break;
-            case 's':
-                newH = Math.max(20, resizeStart.h + dy);
-                break;
-        }
-
-        resizingKey.width = newW;
-        resizingKey.height = newH;
-        resizingKey.x = newX;
-        resizingKey.y = newY;
-
-        // 边界限制
-        resizingKey.x = Math.max(0, Math.min(resizingKey.x, canvas.width - resizingKey.width));
-        resizingKey.y = Math.max(0, Math.min(resizingKey.y, canvas.height - resizingKey.height));
-
-        // 计算对齐线和吸附位置
-        const snap = calculateSnap(resizingKey, true, resizeHandle);
-        snapLines = snap.snapLines;
-
-        // 应用吸附后的位置和大小
-        resizingKey.x = snap.adjustedX;
-        resizingKey.y = snap.adjustedY;
-        resizingKey.width = snap.adjustedW;
-        resizingKey.height = snap.adjustedH;
-
-        // 更新编辑菜单中的数值
-        updateEditMenuValues();
-
-        invalidateCanvas();
-        return;
-    }
-
-    // 如果正在拖拽按键
-    if (draggedKey) {
-        // 先计算原始位置
-        let newX = x - dragOffset.x;
-        let newY = y - dragOffset.y;
-
-        // 临时设置位置用于计算对齐
-        draggedKey.x = newX;
-        draggedKey.y = newY;
-
-        // 计算对齐线和吸附位置
-        const snap = calculateSnap(draggedKey, false);
-        snapLines = snap.snapLines;
-
-        // 应用吸附后的位置
-        draggedKey.x = snap.adjustedX;
-        draggedKey.y = snap.adjustedY;
-
-        // 边界限制
-        draggedKey.x = Math.max(0, Math.min(draggedKey.x, canvas.width - (draggedKey.width || CONFIG.keySize)));
-        draggedKey.y = Math.max(0, Math.min(draggedKey.y, canvas.height - (draggedKey.height || CONFIG.keySize)));
-
-        // 更新编辑菜单中的数值
-        updateEditMenuValues();
-
-        invalidateCanvas();
-        return;
-    }
-
-    // 如果正在拖拽背景
-    if (isDraggingBg) {
-        bgPosition.x = x - bgDragOffset.x;
-        bgPosition.y = y - bgDragOffset.y;
-        
-        invalidateCanvas();
-        return;
-    }
-
-    // 如果正在拖拽按键独立背景
-    if (isDraggingKeyBg && draggedKeyBg) {
-        draggedKeyBg.bgOffsetX = x - draggedKeyBg.x - keyBgDragOffset.x;
-        draggedKeyBg.bgOffsetY = y - draggedKeyBg.y - keyBgDragOffset.y;
-        
-        invalidateCanvas();
-        return;
-    }
-
-    // 检测鼠标悬停位置，更新光标
-    let found = false;
-    let hoveredKey = null;
-
-    // 先找到鼠标所在的按键（从后往前，优先上层）
-    for (let i = keys.length - 1; i >= 0; i--) {
-        const key = keys[i];
-        const w = key.width || CONFIG.keySize;
-        const h = key.height || CONFIG.keySize;
-
-        // 检查是否在按键范围内（包括边缘扩展区）
-        const inRange = x >= key.x - RESIZE_EDGE_THRESHOLD &&
-                       x <= key.x + w + RESIZE_EDGE_THRESHOLD &&
-                       y >= key.y - RESIZE_EDGE_THRESHOLD &&
-                       y <= key.y + h + RESIZE_EDGE_THRESHOLD;
-
-        if (inRange) {
-            hoveredKey = key;
-            break;
-        }
-    }
-
-    // 如果找到了按键，检测具体位置
-    if (hoveredKey) {
-        // 优先检查手柄
-        const handle = getResizeHandle(hoveredKey, x, y);
-        if (handle) {
-            updateCursor(handle);
-            found = true;
-        } else {
-            // 然后检查边缘
-            const edge = getEdgePosition(hoveredKey, x, y);
-            if (edge) {
-                updateCursor(edge);
-                found = true;
-            } else {
-                // 最后在内部显示移动光标
-                const w = hoveredKey.width || CONFIG.keySize;
-                const h = hoveredKey.height || CONFIG.keySize;
-                if (x >= hoveredKey.x && x <= hoveredKey.x + w &&
-                    y >= hoveredKey.y && y <= hoveredKey.y + h) {
-                    canvas.style.cursor = 'move';
-                    canvas.className = 'cursor-move';
-                    found = true;
-                }
-            }
-        }
-    } else if (bgImage) {
-        // 如果没有找到按键但有背景图片，显示移动光标
-        canvas.style.cursor = 'move';
-        found = true;
-    }
-
-    if (!found) {
-        canvas.style.cursor = 'default';
-        canvas.className = '';
-    }
+    mouseMoveModule.handleMouseMove(mouseMoveCtx(), e);
 }
 
 function handleMouseUp() {
