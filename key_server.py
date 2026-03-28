@@ -16,6 +16,7 @@ DOTA 键盘按键捕获服务
 from __future__ import annotations
 
 import asyncio
+import errno
 import importlib.util
 import json
 import os
@@ -109,6 +110,16 @@ def kill_process_using_port(port: int) -> None:
 
     for pid in pids:
         subprocess.call(["taskkill", "/F", "/PID", pid])
+
+
+def _is_address_in_use(exc: OSError) -> bool:
+    """判断是否为「端口已被占用」类错误（跨平台常见取值）。"""
+    if exc.errno == getattr(errno, "EADDRINUSE", None):
+        return True
+    # Windows: WSAEADDRINUSE
+    if getattr(exc, "winerror", None) == 10048:
+        return True
+    return False
 
 
 # ==================== 按键映射 ====================
@@ -271,14 +282,26 @@ async def start_server() -> None:
 
     asyncio.create_task(process_key_events())
 
-    async with websockets.serve(
-        handle_client,
-        WS_HOST,
-        WS_PORT,
-        ping_interval=20,
-        ping_timeout=10,
-    ):
-        await asyncio.Future()  # run forever
+    async def listen_forever() -> None:
+        async with websockets.serve(
+            handle_client,
+            WS_HOST,
+            WS_PORT,
+            ping_interval=20,
+            ping_timeout=10,
+        ):
+            await asyncio.Future()  # run forever
+
+    try:
+        await listen_forever()
+    except OSError as exc:
+        # 仅在绑定失败时再清理端口，避免每次启动都 taskkill 占用该端口的进程
+        if not _is_address_in_use(exc):
+            raise
+        log(f"端口 {WS_PORT} 已被占用，尝试结束占用进程后重试一次...")
+        kill_process_using_port(WS_PORT)
+        time.sleep(0.5)
+        await listen_forever()
 
 
 def start_keyboard_listener() -> None:
@@ -289,9 +312,6 @@ def start_keyboard_listener() -> None:
 
 def main() -> None:
     """程序入口。"""
-    kill_process_using_port(WS_PORT)
-    time.sleep(0.5)
-
     keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
     keyboard_thread.start()
 

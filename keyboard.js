@@ -2460,8 +2460,3 @@ function updateSnapCenterThreshold(val) {
     snapConfig.thresholds.center = parseInt(val);
     document.getElementById('snap-center-threshold-val').textContent = val;
 }
-
-function updateSnapEqualThreshold(val) {
-    snapConfig.thresholds.equal = parseInt(val);
-    document.getElementById('snap-equal-threshold-val').textContent = val;
-}
