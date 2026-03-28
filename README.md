@@ -35,7 +35,7 @@
 
 ## 🚀 快速开始
 
-### 安装
+### 安装与启动
 1. 克隆本仓库：
    ```bash
    git clone https://github.com/jiaxuli960429-dotcom/TimeZone-Virtual-Keyboard.git
@@ -46,24 +46,16 @@
    cd TimeZone-Virtual-Keyboard
    ```
 
-3. 启动应用：
+3. 启动应用（推荐）：
    - 双击 `start-keyboard.bat` 文件
-   - 或直接在浏览器中打开 `index.html` 文件
+4. 浏览器打开：`http://localhost:8080`
 
-### 使用说明
-1. **添加按键**：点击控制面板中的"添加按键"按钮，然后按任意键添加
-2. **编辑按键**：双击按键打开编辑菜单，可调整大小、位置、颜色等
-3. **调整按键**：
-   - 左键拖拽：移动按键
-   - 拖拽边缘：调整大小
-   - 画布上双击按键：打开编辑菜单（设置面板里的按键列表为单击编辑、双击删除）
-4. **背景设置**：
-   - 上传全局背景图片
-   - 为单个按键设置独立背景
-5. **配置管理**：
-   - 使用 `start-keyboard.bat` 并以 `http://localhost:8080` 打开后，可将当前布局**保存到项目内** `configs/*.json`，在设置面板下拉列表中**加载 / 删除**
-   - 仍支持**导出 JSON 文件**与**从文件加载**（换电脑、备份）
-   - 启动时会自动尝试释放 **8080** 端口（Windows），避免旧版仅静态页服务占位导致保存接口 404；若必须与别的程序共用 8080，可设置环境变量 `OVERLAY_SKIP_HTTP_PORT_RECLAIM=1` 再启动（不推荐）
+### 一分钟上手
+- 按 `F2` 显示/隐藏设置面板。
+- 点“添加按键”后按任意键即可加入布局。
+- 画布上双击按键打开编辑弹窗；拖拽可移动，拖边缘可缩放。
+- 配置建议通过“保存到项目”写入 `configs/*.json`，再通过下拉框加载/删除。
+- 若需完整操作手册，请看 `USER_GUIDE.txt`。
 
 ## 🛠 技术栈
 - **前端**：HTML5, CSS3, JavaScript
@@ -75,15 +67,25 @@
 ```
 TimeZone-Virtual-Keyboard/
 ├── index.html          # 主页面
-├── keyboard.js         # 核心逻辑
+├── keyboard.js         # 前端入口与状态编排
+├── js/                 # 前端模块目录（渲染、配置、网络、交互等）
 ├── key_server.py       # WebSocket + 本地 HTTP（页面与 configs API）
 ├── configs/            # 配置目录：default.json 为内置默认布局（入库）；其余 *.json 为用户保存（默认忽略）
+├── docs/               # 开发文档（行为基线、模块说明、文档导航）
 ├── start-keyboard.bat  # 启动脚本
 ├── USER_GUIDE.txt      # 使用说明（中文）
 ├── LICENSE             # MIT 许可证全文
 ├── .gitignore          # Git 忽略文件
 └── README.md           # 项目说明
 ```
+
+## 📚 文档体系
+- `README.md`：项目概览 + 快速启动（入口文档）
+- `USER_GUIDE.txt`：面向使用者的详细操作手册（OBS、常见问题）
+- `CONTRIBUTING.md`：贡献与提交流程规范
+- `docs/README.md`：开发文档导航
+- `docs/frontend-baseline.md`：前端行为基线与回归清单
+- `docs/frontend-modules.md`：前端模块职责边界
 
 ## 🤖 项目开发说明
 
@@ -98,6 +100,7 @@ TimeZone-Virtual-Keyboard/
 
 ## 📐 开发与仓库规范
 - 贡献规范请查看 `CONTRIBUTING.md`
+- 文档导航请查看 `docs/README.md`
 - 推荐使用语义化提交信息：`feat/fix/refactor/docs`
 - 统一编码与缩进规则请查看 `.editorconfig`
 - 本地修改后建议先做最小检查：

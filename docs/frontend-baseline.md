@@ -1,49 +1,51 @@
-# Frontend Behavior Baseline
+# 前端行为基线
 
-This file records current frontend behavior before incremental refactoring.
-Goal: preserve behavior while improving readability and structure.
+本文档用于记录前端当前“约定行为”，作为持续重构时的对照标准。  
+目标：在提升可读性与可维护性的同时，确保用户可见行为不变。
 
-## Startup Flow
+## 启动流程
 
-1. `DOMContentLoaded` initializes canvas and event listeners.
-2. Try to load built-in config from `configs/default.json`.
-3. Load browser persisted config (`localStorage`) if version is valid.
-4. Refresh key list and render canvas.
-5. Connect to WebSocket server (`ws://localhost:8765`).
-6. Refresh saved project config selector from `/api/configs`.
+1. `DOMContentLoaded` 后初始化画布与事件监听。
+2. 尝试加载内置配置 `configs/default.json`。
+3. 读取浏览器缓存配置（`localStorage`）并校验版本。
+4. 刷新按键列表并触发首帧渲染。
+5. 建立 WebSocket 连接（`ws://localhost:8765`）。
+6. 刷新项目内配置下拉列表（`/api/configs`）。
 
-## Core Runtime Behaviors
+## 核心运行行为
 
-- Key highlight state is updated by:
-  - WebSocket messages (`{ type: "key", code, pressed }`)
-  - Local keydown/keyup fallback handling.
-- Canvas redraw is scheduled via `requestAnimationFrame` coalescing.
-- Dragging/resizing keys supports snapping and undo/redo history.
-- Double click on key opens key editor modal.
-- Delete removes currently selected key.
+- 按键高亮来源：
+  - WebSocket 消息（`{ type: "key", code, pressed }`）
+  - 本地 `keydown/keyup` 兜底逻辑。
+- 画布刷新采用 `requestAnimationFrame` 合帧（避免重复重绘）。
+- 按键支持拖拽、缩放、吸附、撤销/重做。
+- 双击按键可打开编辑弹窗。
+- `Delete` 删除当前选中按键。
 
-## Config Behaviors
+## 配置行为
 
-- Exported/saved config schema uses:
+- 导出/保存配置结构：
   - `version: 5`
-  - `keys`, `config`, `bgImage`, `bgPosition`, `bgScale`, `bgKeyOpacity`, `bgNonKeyOpacity`
-- Built-in default config path: `configs/default.json`
-- Browser persisted config key: `dotaKeyboardConfig`
-- Persisted config minimum accepted version: `5`
+  - `keys`、`config`、`bgImage`、`bgPosition`、`bgScale`、`bgKeyOpacity`、`bgNonKeyOpacity`
+- 内置默认配置路径：`configs/default.json`
+- 浏览器缓存 key：`dotaKeyboardConfig`
+- 本地缓存最小可接受版本：`5`
 
-## API / Endpoint Behaviors
+## 接口行为
 
-- `GET /api/configs` lists saved config names.
-- `POST /api/config/save` saves config to `configs/<name>.json`.
-- `GET /api/config?name=...` loads one saved config.
-- `DELETE /api/config?name=...` deletes one saved config.
+- `GET /api/configs`：获取项目内可用配置名称。
+- `POST /api/config/save`：保存到 `configs/<name>.json`。
+- `GET /api/config?name=...`：读取指定配置。
+- `DELETE /api/config?name=...`：删除指定配置。
 
-## Manual Regression Checklist
+## 手工回归清单
 
-- Page opens and keyboard renders.
-- Pressing keys still highlights expected keys.
-- Add/edit/remove key works.
-- Drag/resize + snapping still works.
-- Undo/redo still works.
-- Save/load/export/import config still works.
-- Global background and key background editing still works.
+- 页面可正常打开，键盘可正常渲染。
+- 按键高亮正常（含组合键，如 `Ctrl + 字母`）。
+- 按键新增 / 编辑 / 删除正常。
+- 拖拽 / 缩放 / 吸附行为正常。
+- 撤销 / 重做正常。
+- 配置保存 / 加载 / 导入 / 导出正常。
+- 全局背景与单键背景编辑正常。
+- 编辑弹窗打开期间，被编辑按键高亮始终可见。
+- 编辑弹窗只有点击“保存”才提交；其他关闭方式均取消修改。

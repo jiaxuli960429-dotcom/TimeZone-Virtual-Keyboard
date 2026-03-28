@@ -1,43 +1,54 @@
-# Contributing
+# 贡献指南
 
-Thanks for helping improve **TimeZone Virtual Keyboard**.
+感谢你参与改进 **TimeZone Virtual Keyboard**。
 
-## 1. Branches and commits
-- Prefer one branch per feature or fix.
-- Use clear commit messages, for example:
+## 1. 分支与提交
+
+- 建议一个功能或修复对应一个分支。
+- 提交信息尽量语义化、可读，推荐前缀：
   - `feat: ...`
   - `fix: ...`
   - `refactor: ...`
   - `docs: ...`
 
-Examples:
-- `refactor: simplify websocket keyboard server flow`
-- `docs: add contributing conventions`
+示例：
+- `refactor: 拆分前端键盘交互模块`
+- `docs: 补充前端模块职责说明`
 
-## 2. Code style
-- **Developer-facing** comments and docstrings: **English** (explain *why*, not only *what*).
-- **User-facing** UI strings (web, alerts, logs meant for streamers/operators): **Chinese (Simplified)** where this project already uses it.
-- Prefer meaningful names; avoid `a`, `tmp`, etc.
-- Keep functions focused; consider splitting past ~80–100 lines.
-- Handle exceptions as specifically as practical; avoid blanket silent catches.
+## 2. 代码风格
 
-## 3. Frontend changes
-- Match existing UI wording and layout patterns.
-- When adding controls, keep `id`s and event handlers aligned between `index.html` and `keyboard.js`.
-- Keep OBS browser-source compatibility in mind (e.g. 1200×400 canvas).
+- **开发者注释 / docstring**：优先英文，重点说明“为什么”，而不只是“做了什么”。
+- **面向用户的文案**（网页、弹窗、运行日志）：优先简体中文，并与现有风格保持一致。
+- 命名要有语义，避免 `a`、`tmp` 等低信息变量名。
+- 函数职责尽量单一；函数过长时优先拆分。
+- 异常处理尽量具体，避免无差别吞错。
 
-## 4. Python service (`key_server.py`)
-- Prefer not to break non-Windows platforms (Windows is the main target).
-- If you change the WebSocket JSON schema, update the frontend handler accordingly.
-- After changing startup logic, run at least `python -m py_compile key_server.py`.
+## 3. 前端改动约定
 
-## 5. Pre-merge checklist (minimal)
+- 保持现有 UI 术语和交互习惯。
+- 新增控件时，确保 `index.html` 与 `keyboard.js`（或对应模块）中的 `id`/事件绑定一致。
+- 保持 OBS 浏览器源兼容性（建议画布尺寸 `1200x400`）。
+- 参考文档：
+  - `docs/frontend-baseline.md`
+  - `docs/frontend-modules.md`
+
+## 4. Python 服务改动约定（`key_server.py`）
+
+- Windows 是主目标，但尽量不破坏非 Windows 行为。
+- 如修改 WebSocket JSON 结构，必须同步更新前端处理逻辑。
+- 修改启动逻辑后，至少执行一次：
+  - `python -m py_compile key_server.py`
+
+## 5. 合并前最小检查
+
 1. `python -m py_compile key_server.py`
-2. Open the page in a browser and verify key highlighting.
-3. Save / load config still works.
+2. 浏览器中验证按键高亮（含组合键，如 `Ctrl + 字母`）。
+3. 验证配置保存 / 加载可用。
+4. 验证编辑弹窗行为：仅“保存”提交，其他关闭方式均取消。
 
-## 6. Pull request description
-- Motivation (why the change)
-- What changed (high level)
-- Risks / rollback / compatibility
-- How you tested (commands + manual steps)
+## 6. PR 描述建议
+
+- 变更动机（为什么改）
+- 变更内容（高层概述）
+- 风险与回滚方案（兼容性影响）
+- 测试方式（命令 + 手工步骤）
