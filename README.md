@@ -92,6 +92,15 @@ TimeZone-Virtual-Keyboard/
 
 所有代码均通过 AI 生成和优化，确保了代码质量和功能完整性。
 
+
+## 📐 开发与仓库规范
+- 贡献规范请查看 `CONTRIBUTING.md`
+- 推荐使用语义化提交信息：`feat/fix/refactor/docs`
+- 统一编码与缩进规则请查看 `.editorconfig`
+- 本地修改后建议先做最小检查：
+  - `python -m py_compile key_server.py`
+  - 浏览器手工验证按键显示和配置保存/加载
+
 ## 📄 许可证
 
 本项目采用 MIT 许可证，详见 LICENSE 文件。
