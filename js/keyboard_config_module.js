@@ -158,12 +158,73 @@
         reader.readAsText(file);
     }
 
+    /** 无 query 时叠加层会尝试加载的项目内文件名（configs/obs.json）。 */
+    const OVERLAY_FALLBACK_PROFILE_NAME = 'obs';
+
+    async function loadProjectConfigByName(options) {
+        const opts = options || {};
+        const name = (opts.name || '').trim();
+        if (!name || typeof opts.applyConfig !== 'function') return false;
+        const fetchImpl = opts.fetchImpl || fetch;
+        try {
+            const r = await fetchImpl('/api/config?name=' + encodeURIComponent(name), { cache: 'no-store' });
+            if (!r.ok) return false;
+            const config = await r.json();
+            opts.applyConfig(config);
+            return true;
+        } catch (e) {
+            (opts.logger || console).warn('加载项目配置失败: ' + name, e);
+            return false;
+        }
+    }
+
+    /**
+     * OBS / 独立浏览器叠加层：不依赖 localStorage。
+     * 顺序：先 URL ?config=名称，再尝试 configs/obs.json。
+     */
+    async function loadOverlayServerProfile(options) {
+        const opts = options || {};
+        const fallback =
+            typeof opts.overlayFallbackName === 'string' && opts.overlayFallbackName.trim()
+                ? opts.overlayFallbackName.trim()
+                : OVERLAY_FALLBACK_PROFILE_NAME;
+        const logger = opts.logger || console;
+        const params = new URLSearchParams(
+            typeof globalObj.location !== 'undefined' && globalObj.location.search ? globalObj.location.search : ''
+        );
+        const fromQuery = (params.get('config') || '').trim();
+        const names = [];
+        if (fromQuery) names.push(fromQuery);
+        if (fallback && names.indexOf(fallback) === -1) names.push(fallback);
+
+        for (let i = 0; i < names.length; i++) {
+            const ok = await loadProjectConfigByName({
+                name: names[i],
+                applyConfig: opts.applyConfig,
+                fetchImpl: opts.fetchImpl,
+                logger: opts.logger
+            });
+            if (ok) {
+                logger.log('叠加层已使用服务端配置: configs/' + names[i] + '.json');
+                return;
+            }
+        }
+        logger.log(
+            '叠加层未找到可加载的项目配置（已尝试: ' +
+                names.join(', ') +
+                '）。当前为 configs/default.json。请在控制台「保存到项目」为 obs 或所选名称，并复制带 ?config= 的 OBS 地址。'
+        );
+    }
+
     globalObj.KeyboardConfigModule = {
         PERSISTED_CONFIG_MIN_VERSION,
+        OVERLAY_FALLBACK_PROFILE_NAME,
         loadBuiltinDefaultConfig,
         loadSavedConfig,
         applyConfig,
         exportConfigJsonFile,
-        loadConfigFromFile
+        loadConfigFromFile,
+        loadProjectConfigByName,
+        loadOverlayServerProfile
     };
 })(window);

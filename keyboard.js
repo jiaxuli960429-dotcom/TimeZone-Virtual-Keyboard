@@ -67,6 +67,11 @@ let resizeStart = { x: 0, y: 0, w: 0, h: 0 }; // 调整开始时的状态
 const RESIZE_HANDLE_SIZE = 8; // 调整手柄大小
 const RESIZE_EDGE_THRESHOLD = 6; // 边缘检测阈值
 
+// OBS 快速预览态：记录切换前当前编辑态，便于一键回退
+let obsFlowPreviewBaseConfig = null;
+let obsFlowPreviewBaseProfileName = '';
+let obsFlowPreviewActiveName = '';
+
 // 辅助对齐线相关
 let snapLines = []; // 当前显示的对齐线
 let isSnapping = false; // 是否正在吸附
@@ -475,9 +480,51 @@ function openConfigUpload() {
     if (upload) upload.click();
 }
 
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+    const temp = document.createElement('textarea');
+    temp.value = text;
+    temp.style.position = 'fixed';
+    temp.style.opacity = '0';
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand('copy');
+    document.body.removeChild(temp);
+}
+
+function setObsFlowStatus(message, tone = '') {
+    const el = byId('obs-flow-status');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove('success', 'error');
+    if (tone === 'success' || tone === 'error') {
+        el.classList.add(tone);
+    }
+}
+
+function updateObsPreviewUiState() {
+    const btn = byId('obs-back-to-current-btn');
+    if (!btn) return;
+    btn.disabled = !(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+}
+
+function getObsProfileNameForOverlayLink() {
+    const obsNameInput = byId('obs-profile-name');
+    const obsName = obsNameInput && obsNameInput.value ? String(obsNameInput.value).trim() : '';
+    if (obsName) return obsName;
+
+    const sel = byId('saved-config-select');
+    const v = sel && sel.value ? String(sel.value).trim() : '';
+    return v || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
+}
+
 function getOverlayUrl() {
     const u = new URL(window.location.href);
-    return `${u.origin}/overlay`;
+    const profile = getObsProfileNameForOverlayLink();
+    return `${u.origin}/overlay?config=${encodeURIComponent(profile)}`;
 }
 
 function updateObsOverlayUrlField() {
@@ -486,30 +533,154 @@ function updateObsOverlayUrlField() {
     input.value = getOverlayUrl();
 }
 
-async function copyObsOverlayUrl() {
+function handleObsProfileInput() {
+    updateObsOverlayUrlField();
+}
+
+async function useObsQuickProfile() {
+    const quick = byId('obs-profile-quick-select');
+    const input = byId('obs-profile-name');
+    if (!quick || !input) return;
+    const name = String(quick.value || '').trim();
+    if (!name) return;
+
+    if (!obsFlowPreviewBaseConfig) {
+        obsFlowPreviewBaseConfig = buildCurrentConfigObject();
+        obsFlowPreviewBaseProfileName = input && input.value ? String(input.value).trim() : '';
+    }
+
+    const loaded = await configModule.loadProjectConfigByName({
+        name,
+        applyConfig
+    });
+    if (!loaded) {
+        setObsFlowStatus('读取配置失败：configs/' + name + '.json 不可用。', 'error');
+        return;
+    }
+
+    input.value = name;
+    obsFlowPreviewActiveName = name;
+    updateObsOverlayUrlField();
+    updateObsPreviewUiState();
+    setObsFlowStatus(
+        '正在预览 configs/' + name + '.json。可直接一键复制 OBS 地址；若要回到刚才编辑中的样子，点「回到当前编辑态」。',
+        'success'
+    );
+}
+
+function restoreObsCurrentConfig() {
+    if (!obsFlowPreviewBaseConfig) {
+        setObsFlowStatus('当前就是编辑态，无需回退。');
+        return;
+    }
+    applyConfig(obsFlowPreviewBaseConfig);
+    const input = byId('obs-profile-name');
+    if (input) {
+        input.value = obsFlowPreviewBaseProfileName;
+    }
+    obsFlowPreviewBaseConfig = null;
+    obsFlowPreviewBaseProfileName = '';
+    obsFlowPreviewActiveName = '';
+    const quick = byId('obs-profile-quick-select');
+    if (quick) quick.value = '';
+    updateObsOverlayUrlField();
+    syncObsQuickProfileSelect();
+    updateObsPreviewUiState();
+    setObsFlowStatus('已回到切换前的当前编辑态（未保存）。');
+}
+
+function syncObsQuickProfileSelect() {
+    const quick = byId('obs-profile-quick-select');
+    const saved = byId('saved-config-select');
+    const input = byId('obs-profile-name');
+    if (!quick || !saved) return;
+
+    const current = input && input.value ? String(input.value).trim() : '';
+    quick.innerHTML = '';
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '从已保存配置中选择（可选）';
+    quick.appendChild(opt0);
+
+    Array.from(saved.options || []).forEach((opt) => {
+        if (!opt.value) return;
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.value;
+        quick.appendChild(o);
+    });
+
+    if (current && Array.from(quick.options).some((o) => o.value === current)) {
+        quick.value = current;
+    } else {
+        quick.value = '';
+    }
+    if (obsFlowPreviewActiveName && Array.from(quick.options).some((o) => o.value === obsFlowPreviewActiveName)) {
+        quick.value = obsFlowPreviewActiveName;
+    }
+    updateObsPreviewUiState();
+}
+
+async function copyObsOverlayUrl(showNotice = true) {
     const url = getOverlayUrl();
     try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(url);
-        } else {
-            const temp = document.createElement('textarea');
-            temp.value = url;
-            temp.style.position = 'fixed';
-            temp.style.opacity = '0';
-            document.body.appendChild(temp);
-            temp.select();
-            document.execCommand('copy');
-            document.body.removeChild(temp);
+        await copyTextToClipboard(url);
+        if (showNotice) {
+            setObsFlowStatus('OBS 地址已复制：' + url, 'success');
         }
-        alert('OBS 专用地址已复制：\n' + url);
+        return url;
     } catch (err) {
         console.error('复制 OBS 地址失败:', err);
+        setObsFlowStatus('复制失败，请手动复制输入框里的地址。', 'error');
         alert('复制失败，请手动复制：\n' + url);
+        return url;
     }
 }
 
-function openObsOverlayUrl() {
-    window.open(getOverlayUrl(), '_blank', 'noopener,noreferrer');
+function adoptSavedConfigAsObsProfile() {
+    const sel = byId('saved-config-select');
+    const input = byId('obs-profile-name');
+    if (sel && input && sel.value) {
+        input.value = sel.value;
+    }
+    updateObsOverlayUrlField();
+    syncObsQuickProfileSelect();
+    if (sel && sel.value) {
+        setObsFlowStatus('已把「已保存配置」同步为 OBS 配置名：' + sel.value);
+    }
+    updateObsPreviewUiState();
+}
+
+async function quickSaveAndCopyObsUrl() {
+    const input = byId('obs-profile-name');
+    if (!input) return;
+    const raw = String(input.value || '').trim();
+    const profileName = raw || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
+    input.value = profileName;
+
+    const saved = await networkModule.saveConfigToProject({
+        nameInput: { value: profileName },
+        getCurrentConfig: buildCurrentConfigObject,
+        onSaved: refreshSavedConfigSelect,
+        suppressSuccessAlert: true
+    });
+    if (!saved) return;
+
+    const savedSelect = byId('saved-config-select');
+    if (savedSelect) {
+        const hit = Array.from(savedSelect.options || []).some((opt) => {
+            if (opt.value === profileName) {
+                savedSelect.value = profileName;
+                return true;
+            }
+            return false;
+        });
+        if (!hit) savedSelect.value = '';
+    }
+
+    const copiedUrl = await copyObsOverlayUrl(false);
+    setObsFlowStatus('完成：已保存 configs/' + profileName + '.json，并复制 OBS 地址。', 'success');
+    console.log('OBS 地址已复制:', copiedUrl);
 }
 
 function switchConsoleTab(tabId) {
@@ -641,7 +812,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadBuiltinDefaultConfig();
 
-    loadSavedConfig();
+    if (IS_OVERLAY_MODE) {
+        await configModule.loadOverlayServerProfile({ applyConfig });
+    } else {
+        loadSavedConfig();
+    }
 
     updateKeyList();
     invalidateCanvas();
@@ -652,7 +827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     connectWebSocket();
 
-    refreshSavedConfigSelect();
+    await refreshSavedConfigSelect();
 
     updateUndoRedoButtons();
     fitConsoleCanvasToPreviewStage();
@@ -1414,17 +1589,23 @@ function buildCurrentConfigObject() {
 }
 
 async function refreshSavedConfigSelect() {
-    return networkModule.refreshSavedConfigSelect({
+    await networkModule.refreshSavedConfigSelect({
         selectEl: byId('saved-config-select')
     });
+    syncObsQuickProfileSelect();
+    updateObsOverlayUrlField();
 }
 
 async function saveConfigToProject() {
-    return networkModule.saveConfigToProject({
+    const ok = await networkModule.saveConfigToProject({
         nameInput: byId('config-save-name'),
         getCurrentConfig: buildCurrentConfigObject,
         onSaved: refreshSavedConfigSelect
     });
+    if (ok) {
+        setObsFlowStatus('已保存到项目。可在顶部直接复制新的 OBS 地址。', 'success');
+    }
+    return ok;
 }
 
 function exportConfigJsonFile() {
@@ -1433,10 +1614,18 @@ function exportConfigJsonFile() {
 }
 
 async function loadSelectedProjectConfig() {
-    return networkModule.loadSelectedProjectConfig({
-        selectEl: byId('saved-config-select'),
+    const sel = byId('saved-config-select');
+    await networkModule.loadSelectedProjectConfig({
+        selectEl: sel,
         applyConfig
     });
+    if (sel && sel.value) {
+        const input = byId('obs-profile-name');
+        if (input) input.value = sel.value;
+        setObsFlowStatus('已加载配置：' + sel.value + '。可直接复制或一键保存并复制 OBS 地址。');
+    }
+    updateObsOverlayUrlField();
+    syncObsQuickProfileSelect();
 }
 
 async function deleteSelectedProjectConfig() {
@@ -1521,15 +1710,21 @@ function showConfigLocation() {
    - 下拉框「刷新列表」后可选中并「加载所选」
    - 换电脑时把整个项目文件夹拷走即可带上这些 json
 
-2. 浏览器本地缓存
+2. OBS 浏览器源（重要）
+   - OBS 内嵌浏览器与桌面 Chrome 的 localStorage 不互通，不能指望「控制台里调好的样子」自动出现在 OBS
+   - 推荐直接用页顶「⚡ 一键保存并复制 OBS 地址」：会保存到 configs/配置名.json 并复制带 ?config= 的链接
+   - 若不走一键，也可手动保存一份名为 obs 的配置（configs/obs.json），叠加层会优先从服务端加载该文件
+   - 请勿把控制台主页 http://localhost:8080/ 当作 OBS 源（会带整页 UI，且仍无本地缓存）
+
+3. 浏览器本地缓存
    - 每次成功保存到项目或导出时，会同步写入当前浏览器的 localStorage
    - 同一浏览器再次打开页面会自动尝试恢复上次配置（配置版本 ≥5；更旧的缓存会被丢弃以免盖住新版默认布局）
 
-3. 导出 / 导入文件
+4. 导出 / 导入文件
    - 「导出 JSON」：下载到本机任意位置，便于备份或发给别人
    - 「从文件加载」：选择 .json 文件导入（不经过 configs/ 目录也可以）
 
-4. 配置内容包含
+5. 配置内容包含
    - 按键位置、大小、文字、单键颜色与背景图等
    - 全局透明度与颜色、全局背景图（多为 base64，文件会较大）
     `;

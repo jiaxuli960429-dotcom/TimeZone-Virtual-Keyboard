@@ -319,6 +319,76 @@
             padding: 10px;
         }
 
+        .obs-flow-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .obs-flow-head label {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .obs-flow-badge {
+            font-size: 11px;
+            border-radius: 999px;
+            border: 1px solid #ffd3df;
+            background: #fff;
+            color: #9e3d5e;
+            padding: 3px 10px;
+            white-space: nowrap;
+        }
+
+        .obs-flow-row {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .obs-flow-row .obs-label {
+            font-size: 12px;
+            color: var(--text-sub);
+            min-width: 52px;
+        }
+
+        #obs-profile-name {
+            width: 160px;
+        }
+
+        #obs-profile-quick-select {
+            width: 180px;
+            max-width: 46vw;
+        }
+
+        .obs-flow-status {
+            margin-top: 8px;
+            font-size: 12px;
+            line-height: 1.45;
+            color: #6b7689;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 1px dashed #d8e0ee;
+            background: rgba(255, 255, 255, 0.56);
+        }
+
+        .obs-flow-status.success {
+            color: #1b7a4d;
+            border-color: #b7e7ce;
+            background: #ecfbf3;
+        }
+
+        .obs-flow-status.error {
+            color: #b5395f;
+            border-color: #ffccda;
+            background: #fff1f6;
+        }
+
         .control-group {
             border-radius: var(--radius-md);
             border: 1px solid var(--card-border);
@@ -769,7 +839,7 @@
 
                 <div id="keyboard-container">
                     <img id="bg-image" style="display:none; visibility:hidden;">
-                    <canvas id="keyboard-canvas" tabindex="0" title="单击选中；双击编辑；Delete 删除选中；拖移需移动超过 5px"></canvas>
+                    <canvas id="keyboard-canvas" tabindex="0"></canvas>
                 </div>
             </div>
         </section>
@@ -780,20 +850,33 @@
             <div class="console-header">
                 <div class="console-title">
                     <strong>虚拟键盘控制台</strong>
-                    <span>主入口页面（OBS 使用独立 URL）</span>
+                    <span>编辑配置与生成 OBS 链接</span>
                 </div>
             </div>
             <div class="controls" id="controls-panel">
-                <h3>🎮 DOTA键盘显示设置</h3>
                 <div class="obs-fixed-card">
-                    <label>OBS 专用虚拟键盘地址（建议填这个 URL 到 OBS 浏览器源）:</label>
+                    <div class="obs-flow-head">
+                        <label>OBS 链接生成</label>
+                        <span class="obs-flow-badge">推荐流程：选配置 → 一键保存并复制</span>
+                    </div>
+                    <div class="obs-flow-row">
+                        <span class="obs-label">配置名</span>
+                        <input type="text" id="obs-profile-name" value="obs" placeholder="默认 obs" data-input="handleObsProfileInput">
+                        <select id="obs-profile-quick-select" data-change="useObsQuickProfile">
+                            <option value="">从已保存配置中选择（可选）</option>
+                        </select>
+                        <button class="btn" id="obs-back-to-current-btn" data-click="restoreObsCurrentConfig" disabled>↩ 回到当前编辑态</button>
+                        <button class="btn btn-primary" data-click="quickSaveAndCopyObsUrl">⚡ 一键保存并复制 OBS 地址</button>
+                    </div>
                     <div class="obs-url-row" style="margin-top:6px;">
                         <input type="text" id="obs-overlay-url" readonly value="">
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                        <button class="btn" data-click="copyObsOverlayUrl">🔗 复制 OBS 地址</button>
-                        <button class="btn btn-primary" data-click="openObsOverlayUrl">🌐 打开 OBS 页面</button>
+                    <div id="obs-flow-status" class="obs-flow-status">
+                        等待操作：先确认配置名（默认 obs），点「一键保存并复制 OBS 地址」，然后到 OBS 粘贴即可。若复制失败，可手动复制上方链接。
                     </div>
+                    <p class="obs-url-hint" style="margin-top:8px; font-size:12px; color:var(--text-sub); line-height:1.5;">
+                        注意：OBS 与桌面浏览器不共享本地缓存，请始终使用这里生成的 <code style="font-size:11px;">/overlay?config=...</code> 地址。
+                    </p>
                 </div>
                 <div class="console-tabs">
                     <button type="button" class="console-tab-btn active" id="tab-btn-appearance" data-click="switchConsoleTab:appearance">外观</button>
@@ -885,7 +968,7 @@
 
                     <div class="control-group">
                         <label>读取已保存的配置:</label>
-                        <select id="saved-config-select" style="width:100%; margin-top:6px;"></select>
+                        <select id="saved-config-select" style="width:100%; margin-top:6px;" data-change="adoptSavedConfigAsObsProfile"></select>
                         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
                             <button class="btn" data-click="loadSelectedProjectConfig">📂 加载所选</button>
                             <button class="btn btn-danger" data-click="deleteSelectedProjectConfig">🗑️ 删除所选</button>
