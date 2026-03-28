@@ -172,6 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 连接 WebSocket（全局按键捕获）
     connectWebSocket();
+
+    refreshSavedConfigSelect();
 });
 
 // ==================== 渲染 ====================
@@ -1651,16 +1653,17 @@ function toggleControls() {
 
     if (panel.classList.contains('hidden')) {
         panel.classList.remove('hidden');
-        btn.textContent = 'Settings';
+        btn.textContent = '⚙️ 设置';
+        refreshSavedConfigSelect();
     } else {
         panel.classList.add('hidden');
-        btn.textContent = '';
+        btn.textContent = '⚙️ 设置';
     }
 }
 
 function hideControls() {
     document.getElementById('controls-panel').classList.add('hidden');
-    document.getElementById('toggle-controls').textContent = '';
+    document.getElementById('toggle-controls').textContent = '⚙️ 设置';
 }
 
 function updateOpacity(val) {
@@ -2087,12 +2090,10 @@ function cleanKeyForSave(key) {
     return cleaned;
 }
 
-function saveConfig() {
-    // 清理keys数组，排除内部临时属性
+function buildCurrentConfigObject() {
     const cleanedKeys = keys.map(cleanKeyForSave);
-
-    const config = {
-        version: 2, // 配置版本号，用于未来兼容性检查
+    return {
+        version: 2,
         keys: cleanedKeys,
         config: CONFIG,
         bgImage: bgImage ? document.getElementById('bg-image').src : '',
@@ -2101,11 +2102,75 @@ function saveConfig() {
         bgKeyOpacity: bgKeyOpacity,
         bgNonKeyOpacity: bgNonKeyOpacity
     };
+}
 
+async function refreshSavedConfigSelect() {
+    const sel = document.getElementById('saved-config-select');
+    if (!sel) return;
+    try {
+        const r = await fetch('/api/configs');
+        if (!r.ok) throw new Error('bad status');
+        const data = await r.json();
+        const names = data.names || [];
+        sel.innerHTML = '';
+        const opt0 = document.createElement('option');
+        opt0.value = '';
+        opt0.textContent = names.length ? '-- 选择已保存配置 --' : '-- 暂无，请先「保存到项目」--';
+        sel.appendChild(opt0);
+        names.forEach((name) => {
+            const o = document.createElement('option');
+            o.value = name;
+            o.textContent = name;
+            sel.appendChild(o);
+        });
+    } catch (e) {
+        console.warn('配置列表不可用（请用 start-keyboard.bat 启动，并以 http://localhost:8080 打开）', e);
+        sel.innerHTML = '';
+        const opt0 = document.createElement('option');
+        opt0.value = '';
+        opt0.textContent = '-- 需本机 HTTP 服务（见控制台说明）--';
+        sel.appendChild(opt0);
+    }
+}
+
+async function saveConfigToProject() {
+    const nameInput = document.getElementById('config-save-name');
+    const name = (nameInput && nameInput.value ? nameInput.value : '').trim();
+    if (!name) {
+        alert('请填写配置名称（将保存为项目内 configs/名称.json）');
+        return;
+    }
+    const config = buildCurrentConfigObject();
+    const dataStr = JSON.stringify(config);
+    try {
+        const r = await fetch('/api/config/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ name, config }),
+        });
+        let data = {};
+        try {
+            data = await r.json();
+        } catch (_) { /* empty */ }
+        if (!r.ok) {
+            alert(data.error || ('保存失败 (HTTP ' + r.status + ')'));
+            return;
+        }
+        localStorage.setItem('dotaKeyboardConfig', dataStr);
+        alert('已保存到项目 configs/ 目录：' + (data.name || name) + '.json');
+        if (nameInput) nameInput.value = '';
+        refreshSavedConfigSelect();
+    } catch (err) {
+        console.error(err);
+        alert('保存失败（请确认已用 http://localhost:8080 打开页面，且 key_server 正在运行）');
+    }
+}
+
+function exportConfigJsonFile() {
+    const config = buildCurrentConfigObject();
     const dataStr = JSON.stringify(config, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement('a');
     a.href = url;
     a.download = 'dota-keyboard-config.json';
@@ -2113,11 +2178,55 @@ function saveConfig() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    // 同时保存到localStorage
     localStorage.setItem('dotaKeyboardConfig', dataStr);
+    alert('已导出 JSON 下载，并已写入本浏览器 localStorage 缓存。');
+}
 
-    alert('配置已保存！文件已下载到浏览器默认下载文件夹。');
+async function loadSelectedProjectConfig() {
+    const sel = document.getElementById('saved-config-select');
+    const name = sel && sel.value;
+    if (!name) {
+        alert('请先从下拉框选择一个配置');
+        return;
+    }
+    try {
+        const r = await fetch('/api/config?name=' + encodeURIComponent(name));
+        if (!r.ok) {
+            alert('加载失败 (HTTP ' + r.status + ')');
+            return;
+        }
+        const config = await r.json();
+        applyConfig(config);
+        localStorage.setItem('dotaKeyboardConfig', JSON.stringify(config));
+        alert('已从项目 configs/ 加载：' + name);
+    } catch (e) {
+        console.error(e);
+        alert('加载失败（请确认本机服务已启动）');
+    }
+}
+
+async function deleteSelectedProjectConfig() {
+    const sel = document.getElementById('saved-config-select');
+    const name = sel && sel.value;
+    if (!name) {
+        alert('请先选择要删除的配置');
+        return;
+    }
+    if (!confirm('确定删除项目内配置：configs/' + name + '.json ?')) return;
+    try {
+        const r = await fetch('/api/config?name=' + encodeURIComponent(name), { method: 'DELETE' });
+        let data = {};
+        try {
+            data = await r.json();
+        } catch (_) { /* empty */ }
+        if (!r.ok) {
+            alert(data.error || '删除失败');
+            return;
+        }
+        refreshSavedConfigSelect();
+    } catch (e) {
+        alert('删除失败');
+    }
 }
 
 function loadConfig(event) {
@@ -2130,6 +2239,7 @@ function loadConfig(event) {
             const config = JSON.parse(e.target.result);
             applyConfig(config);
             alert('配置已加载！');
+            refreshSavedConfigSelect();
         } catch (err) {
             console.error('配置加载错误:', err);
             alert('配置文件格式错误！');
@@ -2288,30 +2398,27 @@ function applyConfig(config) {
     invalidateCanvas();
 }
 
-// 显示配置保存位置
+// 配置保存说明（用户向）
 function showConfigLocation() {
-    const message = `
-Config save location:
+    const message = `配置保存说明：
 
-1. Auto save:
-   - Config is saved in browser's local storage
-   - Will auto-restore if using same browser
+1. 项目内配置（推荐）
+   - 使用 start-keyboard.bat 启动后，用 http://localhost:8080 打开页面
+   - 在设置里填写名称，点「保存到项目」→ 写入本仓库 configs/ 目录（*.json）
+   - 下拉框「刷新列表」后可选中并「加载所选」
+   - 换电脑时把整个项目文件夹拷走即可带上这些 json
 
-2. Manual save file:
-   - Click "Save Config" to download a .json file
-   - Default: browser's "Downloads" folder
-   - File name: dota-keyboard-config.json
+2. 浏览器本地缓存
+   - 每次成功保存到项目或导出时，会同步写入当前浏览器的 localStorage
+   - 同一浏览器再次打开页面会自动尝试恢复上次配置
 
-3. Use on another PC:
-   - Copy entire dota-keyboard-overlay folder
-   - Or just copy the dota-keyboard-config.json file
-   - On new PC, click "Load Config" and select the file
+3. 导出 / 导入文件
+   - 「导出 JSON」：下载到本机任意位置，便于备份或发给别人
+   - 「从文件加载」：选择 .json 文件导入（不经过 configs/ 目录也可以）
 
-4. What config includes:
-   - All keys' position, size, text
-   - Custom colors per key (if set)
-   - Global opacity, color settings
-   - Background image (base64 encoded)
+4. 配置内容包含
+   - 按键位置、大小、文字、单键颜色与背景图等
+   - 全局透明度与颜色、全局背景图（多为 base64，文件会较大）
     `;
 
     alert(message);

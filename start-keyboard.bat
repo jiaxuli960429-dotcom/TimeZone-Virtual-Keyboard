@@ -19,23 +19,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/3] Python detected
+echo [1/2] Python detected
 echo.
 
-:: Start keyboard capture service
-echo [2/3] Starting keyboard capture service...
-start "Keyboard Capture" pythonw key_server.py
+:: WebSocket + HTTP (static page + configs API on port 8080)
+echo [2/2] Starting keyboard service and local web server...
+start "Keyboard + HTTP" pythonw key_server.py
 
 timeout /t 2 /nobreak >nul
-echo      Keyboard capture service started
-echo.
-
-:: Start HTTP server
-echo [3/3] Starting HTTP server...
-start "HTTP Server" powershell -WindowStyle Hidden -Command "cd '%~dp0'; $listener = New-Object System.Net.HttpListener; $listener.Prefixes.Add('http://localhost:8080/'); $listener.Start(); while ($listener.IsListening) { try { $context = $listener.GetContext(); $request = $context.Request; $response = $context.Response; $path = $request.Url.LocalPath; if ($path -eq '/') { $path = '/index.html' }; $file = Join-Path (Get-Location) $path; if (Test-Path $file) { $content = [System.IO.File]::ReadAllBytes($file); $response.ContentType = if ($path -like '*.html') { 'text/html' } elseif ($path -like '*.js') { 'application/javascript' } elseif ($path -like '*.css') { 'text/css' } elseif ($path -like '*.png') { 'image/png' } elseif ($path -like '*.jpg') { 'image/jpeg' } else { 'application/octet-stream' }; $response.OutputStream.Write($content, 0, $content.Length) } else { $response.StatusCode = 404 }; $response.Close() } catch {} }"
-
-timeout /t 1 /nobreak >nul
-echo      HTTP server started
+echo      Service started (WebSocket 8765, HTTP 8080)
 echo.
 
 :: Open browser
@@ -55,6 +47,7 @@ echo.
 echo Features:
 echo - Global keyboard capture: works even when browser is not focused
 echo - Press F2 to show/hide settings
+echo - Config profiles saved under configs\ folder in this project
 echo.
 echo Note:
 echo - First run will auto-install dependencies (needs internet)

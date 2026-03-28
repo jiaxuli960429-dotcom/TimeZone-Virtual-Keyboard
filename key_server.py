@@ -6,6 +6,7 @@ Global keyboard capture service for the DOTA / streaming overlay.
 Behavior:
 1) Capture system-wide key events (works when the browser is not focused).
 2) Push events to the web UI over WebSocket (ws://localhost:8765).
+3) Serve the overlay static files and project config API on HTTP (http://127.0.0.1:8080).
 
 Design goals ("safe bootstrap"):
 - Self-check: install missing dependencies and restart the process.
@@ -27,11 +28,17 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 # --- Configuration ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIGS_DIR = os.path.join(SCRIPT_DIR, "configs")
 WS_HOST = "localhost"
 WS_PORT = 8765
+HTTP_HOST = "127.0.0.1"
+HTTP_PORT = 8080
 PIP_MIRROR = "https://pypi.tuna.tsinghua.edu.cn/simple"
 REQUIRED_PACKAGES = ("pynput", "websockets")
 QUEUE_POLL_INTERVAL_SEC = 0.01
@@ -303,6 +310,187 @@ async def start_server() -> None:
         await listen_forever()
 
 
+def _sanitize_config_basename(name: Any) -> str | None:
+    """Safe filename stem for configs/*.json (no path separators)."""
+    if not isinstance(name, str):
+        return None
+    s = name.strip()
+    if not s or len(s) > 80 or s.startswith("."):
+        return None
+    for bad in ("/", "\\", ":", "*", "?", '"', "<", ">", "|"):
+        if bad in s:
+            return None
+    if ".." in s:
+        return None
+    return s
+
+
+def _safe_config_file(configs_dir: str, safe_name: str) -> str | None:
+    """Absolute path to one JSON file under configs_dir, or None if traversal."""
+    try:
+        base = os.path.realpath(configs_dir)
+        candidate = os.path.realpath(os.path.join(configs_dir, safe_name + ".json"))
+        if os.path.commonpath([base, candidate]) != base:
+            return None
+    except (OSError, ValueError):
+        return None
+    return candidate
+
+
+def _list_saved_config_names(configs_dir: str) -> list[str]:
+    if not os.path.isdir(configs_dir):
+        return []
+    names: list[str] = []
+    for entry in sorted(os.listdir(configs_dir)):
+        if entry.startswith(".") or not entry.lower().endswith(".json"):
+            continue
+        path = os.path.join(configs_dir, entry)
+        if os.path.isfile(path):
+            names.append(entry[:-5])
+    return names
+
+
+def _build_overlay_http_handler(root_dir: str, configs_dir: str):
+    """Factory: HTTP static root + /api/config* for overlay JSON profiles."""
+
+    class OverlayHTTPRequestHandler(SimpleHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, directory=root_dir, **kwargs)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+        def _send_bytes(self, code: int, data: bytes, content_type: str) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _send_json(self, code: int, obj: Any) -> None:
+            self._send_bytes(
+                code,
+                json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+
+        def do_GET(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
+            if path == "/api/configs":
+                self._send_json(200, {"ok": True, "names": _list_saved_config_names(configs_dir)})
+                return
+            if path == "/api/config":
+                qs = urllib.parse.parse_qs(parsed.query)
+                raw = (qs.get("name") or [None])[0]
+                safe = _sanitize_config_basename(raw)
+                if not safe:
+                    self._send_json(400, {"ok": False, "error": "invalid name"})
+                    return
+                fp = _safe_config_file(configs_dir, safe)
+                if fp is None or not os.path.isfile(fp):
+                    self._send_json(404, {"ok": False, "error": "not found"})
+                    return
+                try:
+                    with open(fp, "rb") as f:
+                        data = f.read()
+                except OSError:
+                    self._send_json(500, {"ok": False, "error": "read failed"})
+                    return
+                self._send_bytes(200, data, "application/json; charset=utf-8")
+                return
+            super().do_GET()
+
+        def do_POST(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path != "/api/config/save":
+                self.send_error(404)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            body = self.rfile.read(length) if length else b""
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                self._send_json(400, {"ok": False, "error": "invalid json"})
+                return
+            safe = _sanitize_config_basename(payload.get("name"))
+            if not safe:
+                self._send_json(400, {"ok": False, "error": "invalid name"})
+                return
+            cfg = payload.get("config")
+            if not isinstance(cfg, dict):
+                self._send_json(400, {"ok": False, "error": "config must be object"})
+                return
+            fp = _safe_config_file(configs_dir, safe)
+            if fp is None:
+                self._send_json(400, {"ok": False, "error": "bad path"})
+                return
+            try:
+                os.makedirs(os.path.dirname(fp), exist_ok=True)
+                with open(fp, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+            except OSError:
+                self._send_json(500, {"ok": False, "error": "write failed"})
+                return
+            self._send_json(200, {"ok": True, "name": safe})
+
+        def do_DELETE(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path != "/api/config":
+                self.send_error(404)
+                return
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw = (qs.get("name") or [None])[0]
+            safe = _sanitize_config_basename(raw)
+            if not safe:
+                self._send_json(400, {"ok": False, "error": "invalid name"})
+                return
+            fp = _safe_config_file(configs_dir, safe)
+            if fp is None or not os.path.isfile(fp):
+                self._send_json(404, {"ok": False, "error": "not found"})
+                return
+            try:
+                os.remove(fp)
+            except OSError:
+                self._send_json(500, {"ok": False, "error": "delete failed"})
+                return
+            self._send_json(200, {"ok": True})
+
+    return OverlayHTTPRequestHandler
+
+
+def start_http_server_background() -> None:
+    """Serve static UI on HTTP_PORT and JSON profiles under configs/."""
+    os.makedirs(CONFIGS_DIR, exist_ok=True)
+    handler_cls = _build_overlay_http_handler(SCRIPT_DIR, CONFIGS_DIR)
+
+    def run() -> None:
+        for attempt in range(2):
+            try:
+                httpd = ThreadingHTTPServer((HTTP_HOST, HTTP_PORT), handler_cls)
+                break
+            except OSError as exc:
+                if attempt == 0 and _is_address_in_use(exc):
+                    log(f"端口 {HTTP_PORT} 已被占用，尝试结束占用进程后重试一次...")
+                    kill_process_using_port(HTTP_PORT)
+                    time.sleep(0.5)
+                else:
+                    log(f"HTTP 服务启动失败（请用浏览器打开本地页与保存配置将不可用）: {exc}")
+                    return
+        else:
+            return
+        log(f"HTTP 页面与配置 API: http://{HTTP_HOST}:{HTTP_PORT}/")
+        httpd.serve_forever()
+
+    threading.Thread(target=run, name="http-overlay", daemon=True).start()
+
+
 def start_keyboard_listener() -> None:
     """Blocking call: run pynput listener in this thread (used from a daemon thread)."""
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
@@ -310,9 +498,12 @@ def start_keyboard_listener() -> None:
 
 
 def main() -> None:
-    """Entry point: keyboard thread + asyncio WebSocket server."""
+    """Entry point: keyboard thread + HTTP static/API + asyncio WebSocket server."""
     keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
     keyboard_thread.start()
+
+    start_http_server_background()
+    time.sleep(0.15)
 
     try:
         asyncio.run(start_server())

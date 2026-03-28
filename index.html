@@ -416,13 +416,32 @@
         </div>
         
         <div class="control-group">
-            <button class="btn" onclick="saveConfig()">💾 保存配置</button>
-            <button class="btn" onclick="document.getElementById('config-upload').click()">📁 加载配置</button>
+            <label>保存到项目目录 (configs/*.json，需通过 http://localhost:8080 打开页面):</label>
+            <input type="text" id="config-save-name" placeholder="配置名称，例如 dota-main" style="margin-top:6px;">
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                <button class="btn" onclick="saveConfigToProject()">💾 保存到项目</button>
+                <button class="btn btn-primary" onclick="refreshSavedConfigSelect()">🔄 刷新列表</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>读取已保存的配置:</label>
+            <select id="saved-config-select" style="width:100%; margin-top:6px; padding:4px; font-size:12px; background:#333; color:#fff; border:1px solid #555; border-radius:3px;"></select>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                <button class="btn" onclick="loadSelectedProjectConfig()">📂 加载所选</button>
+                <button class="btn btn-danger" onclick="deleteSelectedProjectConfig()">🗑️ 删除所选</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>从文件导入 / 导出（换电脑、备份）:</label>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                <button class="btn" onclick="exportConfigJsonFile()">📤 导出 JSON</button>
+                <button class="btn" onclick="document.getElementById('config-upload').click()">📁 从文件加载</button>
+            </div>
             <input type="file" id="config-upload" accept=".json" style="display:none" onchange="loadConfig(event)">
         </div>
         
         <div class="control-group">
-            <button class="btn btn-primary" onclick="showConfigLocation()">📂 配置保存在哪</button>
+            <button class="btn btn-primary" onclick="showConfigLocation()">📂 配置说明</button>
         </div>
         
         <div class="control-group">

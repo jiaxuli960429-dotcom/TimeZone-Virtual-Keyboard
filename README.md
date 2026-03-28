@@ -61,13 +61,13 @@
    - 上传全局背景图片
    - 为单个按键设置独立背景
 5. **配置管理**：
-   - 点击"保存配置"保存当前设置
-   - 点击"加载配置"导入之前的配置
+   - 使用 `start-keyboard.bat` 并以 `http://localhost:8080` 打开后，可将当前布局**保存到项目内** `configs/*.json`，在设置面板下拉列表中**加载 / 删除**
+   - 仍支持**导出 JSON 文件**与**从文件加载**（换电脑、备份）
 
 ## 🛠 技术栈
 - **前端**：HTML5, CSS3, JavaScript
 - **渲染**：HTML5 Canvas
-- **后端**：Python (WebSocket 服务器)
+- **后端**：Python（WebSocket 按键服务 + 本地 HTTP 静态页与配置 API）
 - **工具**：Git
 
 ## 📁 项目结构
@@ -75,7 +75,8 @@
 TimeZone-Virtual-Keyboard/
 ├── index.html          # 主页面
 ├── keyboard.js         # 核心逻辑
-├── key_server.py       # WebSocket 服务器
+├── key_server.py       # WebSocket + 本地 HTTP（页面与 configs API）
+├── configs/            # 用户保存的配置 JSON（默认不入库，见 .gitignore）
 ├── start-keyboard.bat  # 启动脚本
 ├── USER_GUIDE.txt      # 使用说明（中文）
 ├── LICENSE             # MIT 许可证全文
