@@ -33,6 +33,8 @@ venv/
 # ------------------------------
 # Build outputs / binaries
 # ------------------------------
+/build/
+/dist/
 *.exe
 *.dll
 *.so
