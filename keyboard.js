@@ -111,7 +111,7 @@ let snapConfig = {
 };
 
 /** Built-in layout shipped with the repo (same schema as saved profiles). */
-const BUILTIN_DEFAULT_CONFIG_URL = 'configs/default.json';
+const BUILTIN_DEFAULT_CONFIG_URL = 'configs/默认87键.json';
 const APP_MODE = window.__VK_APP_MODE === 'overlay' ? 'overlay' : 'console';
 const IS_OVERLAY_MODE = APP_MODE === 'overlay';
 
@@ -806,7 +806,7 @@ async function startNewProfileConfig() {
     const suggest = getCurrentConfigName() + '-new';
     const raw = prompt(
         '新建配置：请输入文件名（不含 .json，将保存为 configs/名称.json）。\n' +
-            '会从内置模板 configs/default.json 载入键位，之后可在画布上编辑。',
+            '会从内置模板 configs/默认87键.json 载入键位，之后可在画布上编辑。',
         suggest
     );
     if (raw === null) return;
@@ -1384,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             target = '';
         }
         if (!target || !names.includes(target)) {
-            target = names.includes('default') ? 'default' : '';
+            target = names.includes('默认87键') ? '默认87键' : '';
         }
         if (target) {
             await loadProjectConfigByName(target, { skipDirtyPrompt: true });
@@ -1412,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Load repo default layout from configs/default.json (requires same-origin HTTP, e.g. localhost:8080).
+ * Load repo default layout from configs/默认87键.json (requires same-origin HTTP, e.g. localhost:8080).
  */
 async function loadBuiltinDefaultConfig() {
     return configModule.loadBuiltinDefaultConfig({
@@ -2318,7 +2318,7 @@ function showConfigLocation() {
 
 1. 推荐操作流程（最简单）
    - 使用 start-keyboard.bat 启动后，用 http://localhost:8080 打开页面
-   - 会自动载入你上次用的方案；没有的话会试 default，再没有则用内置模板
+   - 会自动载入你上次用的方案；没有的话会试「默认87键」，再没有则用内置模板
    - 在「配置」里点列表名字切换 → 到「外观」「键位」里改 → 回「配置」点「保存」
    - 想改名用「另存为」；当前名字看最上面 OBS 区域
    - 需要给 OBS 用时，点最上面的「保存并复制」最省事

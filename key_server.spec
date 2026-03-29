@@ -20,7 +20,7 @@ a = Analysis(
         ("overlay.html", "."),
         ("keyboard.js", "."),
         ("js", "js"),
-        ("configs/default.json", "configs"),
+        ("configs/默认87键.json", "configs"),
         *pynput_datas,
     ],
     hiddenimports=hiddenimports,

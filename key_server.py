@@ -709,14 +709,15 @@ def start_keyboard_listener() -> None:
 
 
 def _ensure_default_config_from_bundle() -> None:
-    """Frozen build: copy bundled default.json beside the exe if user has none yet."""
+    """Frozen build: copy bundled 默认87键.json beside the exe if user has none yet."""
     if not getattr(sys, "frozen", False):
         return
     os.makedirs(CONFIGS_DIR, exist_ok=True)
-    dest = os.path.join(CONFIGS_DIR, "default.json")
+    bundled_name = "默认87键.json"
+    dest = os.path.join(CONFIGS_DIR, bundled_name)
     if os.path.isfile(dest):
         return
-    src = os.path.join(BUNDLE_DIR, "configs", "default.json")
+    src = os.path.join(BUNDLE_DIR, "configs", bundled_name)
     if os.path.isfile(src):
         shutil.copy2(src, dest)
 

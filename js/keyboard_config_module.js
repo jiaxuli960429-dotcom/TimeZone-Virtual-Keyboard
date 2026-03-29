@@ -16,7 +16,7 @@
                 opts.onFallbackEmpty();
             }
             (opts.logger || console).warn(
-                '未加载 configs/default.json（请用 http://localhost:8080 打开页面；若用 file:// 打开则无内置布局）。将使用空按键列表。',
+                '未加载内置布局 configs/默认87键.json（请用 http://localhost:8080 打开页面；若用 file:// 打开则无内置布局）。将使用空按键列表。',
                 e
             );
         }
@@ -221,7 +221,7 @@
         logger.log(
             '叠加层未找到可加载的项目配置（已尝试: ' +
                 names.join(', ') +
-                '）。当前为 configs/default.json。请在控制台「保存到项目」为 obs 或所选名称，并复制带 ?config= 的 OBS 地址。'
+                '）。当前为内置模板 configs/默认87键.json。请在控制台「保存到项目」为 obs 或所选名称，并复制带 ?config= 的 OBS 地址。'
         );
     }
 

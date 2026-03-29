@@ -6,7 +6,7 @@
 ## 启动流程
 
 1. `DOMContentLoaded` 后初始化画布与事件监听。
-2. 尝试加载内置配置 `configs/default.json`。
+2. 尝试加载内置配置 `configs/默认87键.json`。
 3. 读取浏览器缓存配置（`localStorage`），要求 JSON 含 `keys` 数组（旧版仅 `version` 的缓存会被丢弃）。
 4. 刷新按键列表并触发首帧渲染。
 5. 建立 WebSocket 连接（`ws://localhost:8765`）。
@@ -29,7 +29,7 @@
   - 可选 `meta`：`author`、`updatedAt`（保存时刷新 `updatedAt`；脏状态指纹忽略 `meta`）
 - 不再写入顶层 `version`。
 - 载入方案时先重置 `CONFIG` 再合并文件内 `config`，避免切换方案残留字段。
-- 内置默认配置路径：`configs/default.json`
+- 内置默认配置路径：`configs/默认87键.json`
 - 浏览器缓存 key：`dotaKeyboardConfig`
 
 ## 接口行为

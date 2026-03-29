@@ -2,8 +2,7 @@
 # Runtime / config artifacts
 # ------------------------------
 *dota-keyboard-config.json
-configs/*.json
-!configs/default.json
+configs/test_*.json
 
 # ------------------------------
 # Logs / temp

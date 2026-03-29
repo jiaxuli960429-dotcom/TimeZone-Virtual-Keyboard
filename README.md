@@ -35,7 +35,7 @@
 - 实时高亮按键；支持 **WebSocket 全局按键捕获**（游戏在前台时浏览器仍能收到按键）。
 - **控制台**（`http://localhost:8080`）编辑布局；**OBS** 使用 **`/overlay?config=方案名`** 仅显示键盘层。
 - 画布尺寸可在预览顶栏调节（逻辑尺寸与 OBS 建议一致）；方案带 `meta`（作者、更新时间等），列表接口由 `key_server.py` 提供。
-- 默认布局可由 **`scripts/generate_default_layout.py`** 重新生成并写入 `configs/default.json`。
+- 默认布局可由 **`scripts/generate_default_layout.py`** 重新生成并写入 `configs/默认87键.json`。
 
 ---
 
@@ -83,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_release.ps1
 ├── keyboard.js                 # 前端编排
 ├── js/                         # 渲染、配置、网络、交互等模块
 ├── key_server.py               # WebSocket + HTTP（静态资源 + /api/config*）
-├── configs/                    # 方案 JSON（default 为内置默认布局）
+├── configs/                    # 方案 JSON（默认87键.json 为内置 87 键布局）
 ├── .github/workflows/          # Release 自动构建 Windows .exe
 ├── scripts/                    # generate_default_layout.py、build_windows_release.ps1
 ├── 使用说明.md                  # 面向主播的详细步骤

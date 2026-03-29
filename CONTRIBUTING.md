@@ -40,7 +40,7 @@
 - 新增或修改 DOM 时，保持 **`id` / `data-click` / 模块回调** 一致，避免半套接在 `keyboard.js`、半套散落在内联脚本。
 - 考虑 **叠加层** `overlay.html`：`IS_OVERLAY_MODE` 下勿依赖仅控制台存在的节点。
 - OBS 相关：叠加层地址为 **`/overlay?config=…`**，文档与 UI 文案勿误导为首页 URL。
-- 布局与默认键位：大改 `configs/default.json` 时，优先改 **`scripts/generate_default_layout.py`** 后重新生成，便于复现。
+- 布局与默认键位：大改 `configs/默认87键.json` 时，优先改 **`scripts/generate_default_layout.py`** 后重新生成，便于复现。
 - 深入结构前请阅读：
   - [docs/frontend-baseline.md](./docs/frontend-baseline.md)
   - [docs/frontend-modules.md](./docs/frontend-modules.md)
@@ -78,7 +78,7 @@
 
 1. `python -m py_compile key_server.py`
 2. 用 **`http://localhost:8080`** 打开控制台：按键高亮、保存/加载/切换方案、OBS 区链接与「保存并复制」。
-3. 打开 **`/overlay?config=default`**：叠加层能加载、无明显控制台报错。
+3. 打开 **`/overlay?config=默认87键`**（或你保存的其它方案名）：叠加层能加载、无明显控制台报错。
 4. 若动到编辑弹窗：仅「保存」提交，其它关闭方式应取消（见 baseline 文档）。
 5. 若改动涉及打包相关文件（`key_server.py` 冻结路径、`key_server.spec`、静态入口页等），发版前在 Windows 上跑通 **`scripts/build_windows_release.ps1`**。
 

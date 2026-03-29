@@ -1,9 +1,9 @@
-# One-off / regen: builds configs/default.json — ANSI-style core + nav cluster (no overlaps).
+# One-off / regen: builds configs/默认87键.json — ANSI-style core + nav cluster (no overlaps).
 import json
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "configs", "default.json")
+OUT = os.path.join(ROOT, "configs", "默认87键.json")
 
 G = 6
 H = 46
