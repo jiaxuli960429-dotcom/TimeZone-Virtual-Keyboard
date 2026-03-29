@@ -1,0 +1,5 @@
+# One path per line (UTF-8), relative to repo root — copied next to TimeZoneKeyboard.exe
+使用说明.md
+USER_GUIDE.txt
+README.md
+LICENSE

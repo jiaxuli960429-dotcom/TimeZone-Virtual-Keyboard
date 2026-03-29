@@ -26,6 +26,7 @@ import os
 import platform
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -35,8 +36,19 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 # --- Configuration ---
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIGS_DIR = os.path.join(SCRIPT_DIR, "configs")
+def _resolve_runtime_dirs() -> tuple[str, str]:
+    """(bundle_dir, app_dir): static assets vs writable app directory (configs)."""
+    if getattr(sys, "frozen", False):
+        bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        app_dir = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        here = os.path.dirname(os.path.abspath(__file__))
+        bundle_dir = app_dir = here
+    return bundle_dir, app_dir
+
+
+BUNDLE_DIR, APP_DIR = _resolve_runtime_dirs()
+CONFIGS_DIR = os.path.join(APP_DIR, "configs")
 WS_HOST = "localhost"
 WS_PORT = 8765
 HTTP_HOST = "127.0.0.1"
@@ -55,6 +67,8 @@ def log(message: str) -> None:
 # --- Dependency bootstrap (before heavy imports) ---
 def ensure_dependencies() -> None:
     """Install missing packages via pip, then execv-restart this process."""
+    if getattr(sys, "frozen", False):
+        return
     missing = [pkg for pkg in REQUIRED_PACKAGES if importlib.util.find_spec(pkg) is None]
     if not missing:
         return
@@ -583,7 +597,7 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
 def start_http_server_background() -> None:
     """Serve static UI on HTTP_PORT and JSON profiles under configs/."""
     os.makedirs(CONFIGS_DIR, exist_ok=True)
-    handler_cls = _build_overlay_http_handler(SCRIPT_DIR, CONFIGS_DIR)
+    handler_cls = _build_overlay_http_handler(BUNDLE_DIR, CONFIGS_DIR)
 
     def run() -> None:
         # Free HTTP_PORT before bind so old one-off static servers (e.g. legacy bat + PowerShell)
@@ -626,8 +640,22 @@ def start_keyboard_listener() -> None:
         listener.join()
 
 
+def _ensure_default_config_from_bundle() -> None:
+    """Frozen build: copy bundled default.json beside the exe if user has none yet."""
+    if not getattr(sys, "frozen", False):
+        return
+    os.makedirs(CONFIGS_DIR, exist_ok=True)
+    dest = os.path.join(CONFIGS_DIR, "default.json")
+    if os.path.isfile(dest):
+        return
+    src = os.path.join(BUNDLE_DIR, "configs", "default.json")
+    if os.path.isfile(src):
+        shutil.copy2(src, dest)
+
+
 def main() -> None:
     """Entry point: keyboard thread + HTTP static/API + asyncio WebSocket server."""
+    _ensure_default_config_from_bundle()
     keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
     keyboard_thread.start()
 

@@ -59,6 +59,7 @@
   ```
 
 - 若改 WebSocket 消息 JSON 形状，必须同步 **`js/keyboard_network_module.js`**（及消费处）。
+- **Windows 免 Python 发行包**：由 **`scripts/build_windows_release.ps1`** + **`key_server.spec`** 生成；推送到远程的标签 **`v*`**（如 `v1.0.0`）会触发 **`.github/workflows/release-windows.yml`**，向 **GitHub Release** 上传 **`TimeZoneKeyboard-Windows.zip`**。若改动影响 `key_server.py` 或静态资源，发版前应本地执行该脚本自检。
 
 ---
 
@@ -77,6 +78,7 @@
 2. 用 **`http://localhost:8080`** 打开控制台：按键高亮、保存/加载/切换方案、OBS 区链接与「保存并复制」。
 3. 打开 **`/overlay?config=default`**：叠加层能加载、无明显控制台报错。
 4. 若动到编辑弹窗：仅「保存」提交，其它关闭方式应取消（见 baseline 文档）。
+5. 若改动涉及打包相关文件（`key_server.py` 冻结路径、`key_server.spec`、静态入口页等），发版前在 Windows 上跑通 **`scripts/build_windows_release.ps1`**。
 
 ---
 
