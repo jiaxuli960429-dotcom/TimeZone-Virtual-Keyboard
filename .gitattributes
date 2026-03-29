@@ -1,0 +1,14 @@
+# Line endings: match .editorconfig — LF in repo; .bat checked out as CRLF for Windows cmd.
+# Reduces "LF will be replaced by CRLF" noise and bogus modified status on Windows.
+* text=auto eol=lf
+*.bat text eol=crlf
+
+# Binaries
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

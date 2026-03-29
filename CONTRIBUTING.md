@@ -8,6 +8,7 @@
 
 - 在 **Issue** 里先描述问题或方案，避免大改与维护者预期不一致（小修复可直接 PR）。
 - 一个 PR 尽量只做一类事：`feat` / `fix` / `docs` / `refactor` 分开更易审。
+- **换行与 Windows**：仓库已配置 **`.gitattributes`**（与 **`.editorconfig`** 一致：多数文件 LF，`*.bat` 为 CRLF）。若在 PowerShell / CMD 里仍频繁出现「LF will be replaced by CRLF」或 **git status 无故显示已修改**，可在**本仓库**执行一次：`git config core.autocrlf false`（只影响当前目录，不改动你机器上的全局 Git 配置）。
 
 ---
 
