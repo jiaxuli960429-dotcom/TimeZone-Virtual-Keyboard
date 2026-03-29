@@ -51,7 +51,6 @@
         const bgImageEl = safeState.getBgImageElement ? safeState.getBgImageElement() : null;
 
         return {
-            version: 5,
             keys: cleanedKeys,
             config: safeState.CONFIG || {},
             bgImage: safeState.bgImage ? (bgImageEl ? bgImageEl.src : '') : '',

@@ -96,7 +96,9 @@
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'btn btn-danger';
-            delBtn.textContent = 'Delete';
+            delBtn.textContent = '删除';
+            delBtn.setAttribute('aria-label', '删除该按键');
+            delBtn.title = '删除该按键';
             delBtn.addEventListener('click', () => removeKey(ctx, key.code));
 
             item.appendChild(span);

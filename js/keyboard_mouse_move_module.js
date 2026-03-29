@@ -3,18 +3,26 @@
 
     function handleMouseMove(ctx, e) {
         const canvas = ctx.canvas;
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const pt =
+            typeof ctx.canvasClientToLogical === 'function'
+                ? ctx.canvasClientToLogical(e.clientX, e.clientY)
+                : (() => {
+                      const rect = canvas.getBoundingClientRect();
+                      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                  })();
+        const x = pt.x;
+        const y = pt.y;
 
         if (ctx.getDragCandidateKey() && !ctx.getDraggedKey()) {
             const from = ctx.getDragCandidateFrom();
-            const dx = x - from.x;
-            const dy = y - from.y;
-            if (dx * dx + dy * dy >= ctx.CLICK_DRAG_THRESHOLD_PX * ctx.CLICK_DRAG_THRESHOLD_PX) {
-                ctx.setDraggedKey(ctx.getDragCandidateKey());
-                ctx.setDragCandidateKey(null);
-                ctx.beginLayoutGesture();
+            if (from && typeof from.clientX === 'number') {
+                const dx = e.clientX - from.clientX;
+                const dy = e.clientY - from.clientY;
+                if (dx * dx + dy * dy >= ctx.CLICK_DRAG_THRESHOLD_PX * ctx.CLICK_DRAG_THRESHOLD_PX) {
+                    ctx.setDraggedKey(ctx.getDragCandidateKey());
+                    ctx.setDragCandidateKey(null);
+                    ctx.beginLayoutGesture();
+                }
             }
         }
 

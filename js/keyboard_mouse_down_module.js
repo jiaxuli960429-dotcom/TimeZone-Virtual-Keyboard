@@ -3,9 +3,15 @@
 
     function handleMouseDown(ctx, e) {
         const canvas = ctx.canvas;
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const pt =
+            typeof ctx.canvasClientToLogical === 'function'
+                ? ctx.canvasClientToLogical(e.clientX, e.clientY)
+                : (() => {
+                      const rect = canvas.getBoundingClientRect();
+                      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                  })();
+        const x = pt.x;
+        const y = pt.y;
 
         if (e.target === canvas && typeof canvas.focus === 'function') {
             try {
@@ -63,7 +69,7 @@
                 if (clickedKey === editingKey) {
                     ctx.setSelectedKey(clickedKey);
                     ctx.setDragCandidateKey(clickedKey);
-                    ctx.setDragCandidateFrom({ x, y });
+                    ctx.setDragCandidateFrom({ clientX: e.clientX, clientY: e.clientY });
                     ctx.dragOffset.x = x - clickedKey.x;
                     ctx.dragOffset.y = y - clickedKey.y;
                 } else {
@@ -72,7 +78,7 @@
             } else {
                 ctx.setSelectedKey(clickedKey);
                 ctx.setDragCandidateKey(clickedKey);
-                ctx.setDragCandidateFrom({ x, y });
+                ctx.setDragCandidateFrom({ clientX: e.clientX, clientY: e.clientY });
                 ctx.dragOffset.x = x - clickedKey.x;
                 ctx.dragOffset.y = y - clickedKey.y;
             }

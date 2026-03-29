@@ -1,8 +1,6 @@
 (function initKeyboardConfigModule(globalObj) {
     'use strict';
 
-    const PERSISTED_CONFIG_MIN_VERSION = 5;
-
     async function loadBuiltinDefaultConfig(options) {
         const opts = options || {};
         const fetchImpl = opts.fetchImpl || fetch;
@@ -33,13 +31,9 @@
         if (!saved) return;
         try {
             const config = JSON.parse(saved);
-            if (typeof config.version !== 'number' || config.version < PERSISTED_CONFIG_MIN_VERSION) {
+            if (!config || typeof config !== 'object' || !Array.isArray(config.keys)) {
                 storage.removeItem('dotaKeyboardConfig');
-                logger.log(
-                    '已忽略旧版本地缓存（version < ' +
-                        PERSISTED_CONFIG_MIN_VERSION +
-                        '），当前以 configs/default.json 为准。若需保留旧布局请用「导出 JSON」备份后再升级。'
-                );
+                logger.log('已忽略格式过旧或无效的地缓存（需含 keys 数组），将以项目内配置为准。');
                 return;
             }
             opts.applyConfig(config);
@@ -56,6 +50,10 @@
             return;
         }
 
+        if (typeof c.resetConfigDefaults === 'function') {
+            c.resetConfigDefaults();
+        }
+
         if (config.keys && Array.isArray(config.keys)) {
             c.setKeys(config.keys.map((item) => c.keyFromPersistedData(item)));
         }
@@ -67,6 +65,17 @@
             c.setText('key-opacity-val', opacitySliderValue);
             c.setStyle('active-color-preview', 'backgroundColor', c.CONFIG.activeColor);
             c.setStyle('inactive-color-preview', 'backgroundColor', c.CONFIG.inactiveColor);
+        }
+
+        if (typeof c.CONFIG.canvasWidth !== 'number' || !Number.isFinite(c.CONFIG.canvasWidth)) {
+            c.CONFIG.canvasWidth = 1200;
+        }
+        if (typeof c.CONFIG.canvasHeight !== 'number' || !Number.isFinite(c.CONFIG.canvasHeight)) {
+            c.CONFIG.canvasHeight = 400;
+        }
+        if (typeof c.setInputValue === 'function') {
+            c.setInputValue('console-canvas-width', String(Math.round(c.CONFIG.canvasWidth)));
+            c.setInputValue('console-canvas-height', String(Math.round(c.CONFIG.canvasHeight)));
         }
 
         if (config.bgImage && config.bgImage !== '' && config.bgImage !== window.location.href) {
@@ -217,7 +226,6 @@
     }
 
     globalObj.KeyboardConfigModule = {
-        PERSISTED_CONFIG_MIN_VERSION,
         OVERLAY_FALLBACK_PROFILE_NAME,
         loadBuiltinDefaultConfig,
         loadSavedConfig,

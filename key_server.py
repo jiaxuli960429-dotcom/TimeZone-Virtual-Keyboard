@@ -371,6 +371,70 @@ def _list_saved_config_names(configs_dir: str) -> list[str]:
     return names
 
 
+def _summarize_config_json_file(path: str) -> dict[str, Any]:
+    """Light metadata for config list UI (author / saved time / key count / file mtime)."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    out: dict[str, Any] = {
+        "name": stem,
+        "keyCount": 0,
+        "author": "",
+        "updatedAt": "",
+        "fileModified": "",
+    }
+    try:
+        st = os.stat(path)
+        out["fileModified"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
+    except OSError:
+        pass
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return out
+    if not isinstance(data, dict):
+        return out
+    keys = data.get("keys")
+    if isinstance(keys, list):
+        out["keyCount"] = len(keys)
+    meta = data.get("meta")
+    if isinstance(meta, dict):
+        author = meta.get("author")
+        updated = meta.get("updatedAt")
+        if isinstance(author, str):
+            out["author"] = author.strip()
+        if isinstance(updated, str):
+            out["updatedAt"] = updated.strip()
+    return out
+
+
+def _list_saved_config_summaries(configs_dir: str) -> list[dict[str, Any]]:
+    if not os.path.isdir(configs_dir):
+        return []
+    items: list[dict[str, Any]] = []
+    for entry in sorted(os.listdir(configs_dir)):
+        if entry.startswith(".") or not entry.lower().endswith(".json"):
+            continue
+        path = os.path.join(configs_dir, entry)
+        if os.path.isfile(path):
+            items.append(_summarize_config_json_file(path))
+    return items
+
+
+def _open_configs_dir(configs_dir: str) -> tuple[bool, str]:
+    """Best-effort open configs folder in OS file explorer."""
+    try:
+        os.makedirs(configs_dir, exist_ok=True)
+        if platform.system().lower() == "windows":
+            os.startfile(configs_dir)  # type: ignore[attr-defined]
+        elif platform.system().lower() == "darwin":
+            subprocess.Popen(["open", configs_dir])
+        else:
+            subprocess.Popen(["xdg-open", configs_dir])
+        return True, ""
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
 def _build_overlay_http_handler(root_dir: str, configs_dir: str):
     """Factory: HTTP static root + /api/config* for overlay JSON profiles."""
 
@@ -415,7 +479,15 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
                 self._send_bytes(200, html, "text/html; charset=utf-8")
                 return
             if path == "/api/configs":
-                self._send_json(200, {"ok": True, "names": _list_saved_config_names(configs_dir)})
+                summaries = _list_saved_config_summaries(configs_dir)
+                self._send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "names": [x["name"] for x in summaries],
+                        "items": summaries,
+                    },
+                )
                 return
             if path == "/api/config":
                 qs = urllib.parse.parse_qs(parsed.query)
@@ -440,6 +512,13 @@ def _build_overlay_http_handler(root_dir: str, configs_dir: str):
 
         def do_POST(self) -> None:
             path = _normalized_request_path(self.path)
+            if path == "/api/config/open-folder":
+                ok, err = _open_configs_dir(configs_dir)
+                if ok:
+                    self._send_json(200, {"ok": True})
+                else:
+                    self._send_json(500, {"ok": False, "error": f"open folder failed: {err}"})
+                return
             if path != "/api/config/save":
                 log(f"HTTP POST 未匹配路由: raw={self.path!r} normalized={path!r}")
                 self._send_json(404, {"ok": False, "error": "not found", "path": path})

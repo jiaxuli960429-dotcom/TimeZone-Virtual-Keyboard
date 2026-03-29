@@ -16,6 +16,9 @@ const CONFIG = {
     canvasHeight: 400
 };
 
+/** 载入方案时先重置再合并，避免上一方案的 config 字段残留在内存里导致误报「未保存」。 */
+const DEFAULT_CONFIG_TEMPLATE = Object.freeze({ ...CONFIG });
+
 // ==================== 状态 ====================
 let keys = []; // 按键列表
 let pressedKeys = new Set(); // 当前按下的按键
@@ -67,11 +70,19 @@ let resizeStart = { x: 0, y: 0, w: 0, h: 0 }; // 调整开始时的状态
 const RESIZE_HANDLE_SIZE = 8; // 调整手柄大小
 const RESIZE_EDGE_THRESHOLD = 6; // 边缘检测阈值
 
-// OBS 快速预览态：记录切换前当前编辑态，便于一键回退
-let obsFlowPreviewBaseConfig = null;
-let obsFlowPreviewBaseProfileName = '';
-let obsFlowPreviewActiveName = '';
+const LAST_ACTIVE_PROFILE_STORAGE_KEY = 'vkLastActiveProfile';
+
 let savedConfigNamesCache = [];
+/** 与列表 API 同步的摘要行，用于本地方案卡片展示（作者 / 日期 / 键位数）。 */
+let savedConfigSummariesCache = [];
+/** 当前文件中的 meta（保存时写回）；author 可由用户以后扩展编辑入口。 */
+let profileMeta = { author: '', updatedAt: '' };
+let currentConfigName = 'obs';
+let lastPristineFingerprint = '';
+let isConfigDirty = true;
+let baselineResyncTimerId = null;
+let baselineResyncTimerId2 = null;
+let obsDirtyUiDebounceTimer = null;
 
 // 辅助对齐线相关
 let snapLines = []; // 当前显示的对齐线
@@ -142,6 +153,8 @@ if (
 ) {
     throw new Error('前端模块加载失败，请检查 index.html 中 js/* 模块脚本引用顺序。');
 }
+
+currentConfigName = configModule.OVERLAY_FALLBACK_PROFILE_NAME || 'obs';
 
 function keyListCtx() {
     return {
@@ -330,6 +343,7 @@ function mouseDownCtx() {
     return {
         canvas,
         CONFIG,
+        canvasClientToLogical,
         dragOffset,
         bgPosition,
         bgDragOffset,
@@ -376,6 +390,7 @@ function mouseMoveCtx() {
     return {
         canvas,
         CONFIG,
+        canvasClientToLogical,
         dragOffset,
         bgPosition,
         bgDragOffset,
@@ -513,68 +528,245 @@ function updateSavedConfigCountText(names) {
     count.textContent = '共 ' + n + ' 项';
 }
 
-function isObsPreviewing() {
-    return !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
+function isValidProfileFileStem(name) {
+    const s = String(name || '').trim();
+    if (!s || s.length > 80 || s.startsWith('.')) return false;
+    if (s.includes('..')) return false;
+    const bad = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    return !bad.some((c) => s.includes(c));
+}
+
+function normalizeProfileNameOrFallback(raw) {
+    const name = String(raw || '').trim();
+    return name || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
+}
+
+function getCurrentConfigName() {
+    const input = byId('obs-profile-name');
+    const fromInput = input && input.value ? String(input.value).trim() : '';
+    return normalizeProfileNameOrFallback(fromInput || currentConfigName);
+}
+
+function persistLastActiveProfile(name) {
+    const safe = String(name || '').trim();
+    if (!safe) return;
+    try {
+        localStorage.setItem(LAST_ACTIVE_PROFILE_STORAGE_KEY, safe);
+    } catch (_) {
+        /* ignore quota / private mode */
+    }
+}
+
+function scheduleBaselineResync() {
+    if (IS_OVERLAY_MODE) return;
+    if (baselineResyncTimerId !== null) {
+        clearTimeout(baselineResyncTimerId);
+        baselineResyncTimerId = null;
+    }
+    if (baselineResyncTimerId2 !== null) {
+        clearTimeout(baselineResyncTimerId2);
+        baselineResyncTimerId2 = null;
+    }
+    /** 仅刷新顶栏等 UI，绝不在这里 capture 基线，否则会吸收用户未保存编辑，导致切换配置不弹确认。 */
+    function runBaselineResync() {
+        try {
+            if (!IS_OVERLAY_MODE) {
+                fitConsoleCanvasToPreviewStage();
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        updateObsWorkflowUi();
+    }
+    baselineResyncTimerId = setTimeout(() => {
+        baselineResyncTimerId = null;
+        runBaselineResync();
+    }, 400);
+    baselineResyncTimerId2 = setTimeout(() => {
+        baselineResyncTimerId2 = null;
+        runBaselineResync();
+    }, 2200);
+}
+
+/** 长字符串（多为 base64 图）只比长度，避免抖动与性能问题 */
+function shortenLongStringsInValue(val, minLen) {
+    const n = minLen || 240;
+    if (typeof val === 'string' && val.length >= n) {
+        return '#str:' + val.length;
+    }
+    return val;
+}
+
+/**
+ * 将当前画布序列化为稳定指纹：键排序、数字取整、长串折叠。
+ * 用于判断是否与「上次保存/载入」一致，减少误报未保存。
+ */
+function normalizeConfigSnapshotForCompare(raw) {
+    let snap;
+    try {
+        snap = JSON.parse(JSON.stringify(raw));
+    } catch (_) {
+        snap = raw;
+    }
+
+    function norm(val) {
+        if (val === null || val === undefined) return val;
+        if (typeof val === 'number' && Number.isFinite(val)) {
+            return Math.round(val * 1e6) / 1e6;
+        }
+        if (typeof val === 'string') {
+            return shortenLongStringsInValue(val, 240);
+        }
+        if (Array.isArray(val)) {
+            return val.map(norm);
+        }
+        if (typeof val === 'object') {
+            const out = {};
+            Object.keys(val)
+                .sort()
+                .forEach((k) => {
+                    out[k] = norm(val[k]);
+                });
+            return out;
+        }
+        return val;
+    }
+
+    if (!snap || typeof snap !== 'object') {
+        return norm(snap);
+    }
+    return norm(snap);
+}
+
+function canonicalConfigFingerprint() {
+    const snap = buildCurrentConfigObject();
+    if (snap.meta) delete snap.meta;
+    if (snap.version !== undefined) delete snap.version;
+    return JSON.stringify(normalizeConfigSnapshotForCompare(snap));
+}
+
+/** 用磁盘 JSON 的稳定形态做基线，避免异步背景图加载等导致刚切换就误报未保存。 */
+function configSnapshotFromFileForCompare(loaded) {
+    const o = loaded && typeof loaded === 'object' ? JSON.parse(JSON.stringify(loaded)) : {};
+    delete o.version;
+    delete o.meta;
+    const cleanedKeys = Array.isArray(o.keys) ? o.keys.map((k) => pureUtils.cleanKeyForSave(k || {})) : [];
+    const cfg = Object.assign({}, DEFAULT_CONFIG_TEMPLATE, o.config && typeof o.config === 'object' ? o.config : {});
+    return {
+        keys: cleanedKeys,
+        config: cfg,
+        bgImage: typeof o.bgImage === 'string' ? o.bgImage : '',
+        bgPosition:
+            o.bgPosition && typeof o.bgPosition === 'object'
+                ? { x: o.bgPosition.x || 0, y: o.bgPosition.y || 0 }
+                : { x: 0, y: 0 },
+        bgScale:
+            o.bgScale !== undefined && !Number.isNaN(Number(o.bgScale)) ? parseFloat(String(o.bgScale), 10) : 1.0,
+        bgKeyOpacity:
+            o.bgKeyOpacity !== undefined && !Number.isNaN(Number(o.bgKeyOpacity))
+                ? parseFloat(String(o.bgKeyOpacity), 10)
+                : 0.8,
+        bgNonKeyOpacity:
+            o.bgNonKeyOpacity !== undefined && !Number.isNaN(Number(o.bgNonKeyOpacity))
+                ? parseFloat(String(o.bgNonKeyOpacity), 10)
+                : 0.8
+    };
+}
+
+function setPristineBaselineFromLoadedConfig(loaded) {
+    if (!IS_OVERLAY_MODE) {
+        fitConsoleCanvasToPreviewStage();
+    }
+    const snap = configSnapshotFromFileForCompare(loaded);
+    lastPristineFingerprint = JSON.stringify(normalizeConfigSnapshotForCompare(snap));
+    isConfigDirty = false;
+}
+
+function capturePristineFingerprintBaseline() {
+    if (!IS_OVERLAY_MODE) {
+        fitConsoleCanvasToPreviewStage();
+    }
+    lastPristineFingerprint = canonicalConfigFingerprint();
+    isConfigDirty = false;
+}
+
+function recomputeDirtyState() {
+    if (IS_OVERLAY_MODE) return;
+    try {
+        const now = canonicalConfigFingerprint();
+        isConfigDirty = !lastPristineFingerprint || now !== lastPristineFingerprint;
+    } catch (err) {
+        console.warn('配置脏状态计算失败，降级为未保存状态:', err);
+        isConfigDirty = true;
+    }
 }
 
 function syncObsProfileNameEverywhere(name) {
-    const safeName = String(name || '').trim();
+    currentConfigName = normalizeProfileNameOrFallback(name);
     const input = byId('obs-profile-name');
-    if (input) input.value = safeName;
-
-    const quick = byId('obs-profile-quick-select');
-    if (quick) {
-        const has = Array.from(quick.options || []).some((o) => o.value === safeName);
-        quick.value = has ? safeName : '';
-    }
+    if (input) input.value = currentConfigName;
 
     const sel = byId('saved-config-select');
     if (sel) {
-        const has = Array.from(sel.options || []).some((o) => o.value === safeName);
-        sel.value = has ? safeName : '';
+        const has = Array.from(sel.options || []).some((o) => o.value === currentConfigName);
+        sel.value = has ? currentConfigName : '';
     }
     updateObsOverlayUrlField();
+    updateObsWorkflowUi();
 }
 
-function updateObsPreviewUiState() {
-    const btn = byId('obs-back-to-current-btn');
-    const previewing = isObsPreviewing();
-    if (btn) btn.disabled = !previewing;
-
-    const actionBtn = byId('obs-primary-action-btn');
-    if (actionBtn) {
-        actionBtn.textContent = previewing ? '🔗 复制 OBS 地址' : '⚡ 保存并复制 OBS 地址';
-        actionBtn.classList.toggle('btn-primary', !previewing);
-    }
-
+function updateObsWorkflowUi() {
+    const name = getCurrentConfigName();
     const modeBadge = byId('obs-mode-badge');
+    recomputeDirtyState();
+
     if (modeBadge) {
-        modeBadge.textContent = previewing ? ('预览态：' + obsFlowPreviewActiveName) : '编辑态';
-        modeBadge.classList.toggle('preview', previewing);
+        modeBadge.textContent = isConfigDirty ? '保存状态：有未保存改动' : '保存状态：无未保存改动';
+        modeBadge.classList.remove('is-clean', 'is-dirty');
+        modeBadge.classList.add(isConfigDirty ? 'is-dirty' : 'is-clean');
+        // 内联 + important，避免被其它样式或扩展盖住
+        if (isConfigDirty) {
+            modeBadge.style.setProperty('background-color', '#ffebee', 'important');
+            modeBadge.style.setProperty('color', '#b71c1c', 'important');
+            modeBadge.style.setProperty('border', '1px solid #e53935', 'important');
+        } else {
+            modeBadge.style.setProperty('background-color', '#e8f5e9', 'important');
+            modeBadge.style.setProperty('color', '#1b5e20', 'important');
+            modeBadge.style.setProperty('border', '1px solid #43a047', 'important');
+        }
+        if (modeBadge.title !== undefined) {
+            modeBadge.title = isConfigDirty
+                ? '当前内容与上次载入或保存时的快照不一致，切换配置前建议先保存。'
+                : '与上次载入配置或上次成功「保存当前配置」时的内容一致；要写入 configs 文件夹请点配置页的保存。';
+        }
     }
+    const previewNameEl = byId('preview-current-config-name');
+    if (previewNameEl) {
+        previewNameEl.textContent = name;
+    }
+}
+
+/** 编辑后画布会 invalidate，但顶栏保存状态需另算；防抖避免拖拽时每帧全量指纹。 */
+function scheduleObsDirtyUiRefresh() {
+    if (IS_OVERLAY_MODE) return;
+    if (obsDirtyUiDebounceTimer !== null) {
+        clearTimeout(obsDirtyUiDebounceTimer);
+    }
+    obsDirtyUiDebounceTimer = setTimeout(() => {
+        obsDirtyUiDebounceTimer = null;
+        updateObsWorkflowUi();
+    }, 200);
 }
 
 function hasSavedProfile(name) {
     const safeName = String(name || '').trim();
     if (!safeName) return false;
-    const savedSelect = byId('saved-config-select');
-    if (!savedSelect) return false;
-    return Array.from(savedSelect.options || []).some((opt) => opt.value === safeName);
-}
-
-function getObsProfileNameForOverlayLink() {
-    const obsNameInput = byId('obs-profile-name');
-    const obsName = obsNameInput && obsNameInput.value ? String(obsNameInput.value).trim() : '';
-    if (obsName) return obsName;
-
-    const sel = byId('saved-config-select');
-    const v = sel && sel.value ? String(sel.value).trim() : '';
-    return v || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
+    return savedConfigNamesCache.includes(safeName);
 }
 
 function getOverlayUrl() {
     const u = new URL(window.location.href);
-    const profile = getObsProfileNameForOverlayLink();
+    const profile = getCurrentConfigName();
     return `${u.origin}/overlay?config=${encodeURIComponent(profile)}`;
 }
 
@@ -584,131 +776,116 @@ function updateObsOverlayUrlField() {
     input.value = getOverlayUrl();
 }
 
-function handleObsProfileInput() {
-    if (isObsPreviewing()) {
-        setObsFlowStatus('你正在预览已保存配置。修改配置名不会退出预览；可点「回到当前编辑态」。');
-    }
-    updateObsOverlayUrlField();
+function waitTwoFrames() {
+    return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        });
+    });
 }
 
-async function useObsQuickProfile() {
-    const quick = byId('obs-profile-quick-select');
-    const input = byId('obs-profile-name');
-    if (!quick || !input) return;
-    const name = String(quick.value || '').trim();
-    if (!name) {
-        if (isObsPreviewing()) {
-            restoreObsCurrentConfig();
-        } else {
-            setObsFlowStatus('当前在编辑态。若要预览，请从下拉框选择一个已保存配置。');
-        }
-        return;
-    }
+async function promptSaveIfDirty(actionLabel) {
+    await waitTwoFrames();
+    recomputeDirtyState();
+    if (!isConfigDirty) return true;
 
-    if (!obsFlowPreviewBaseConfig) {
-        obsFlowPreviewBaseConfig = buildCurrentConfigObject();
-        obsFlowPreviewBaseProfileName = input && input.value ? String(input.value).trim() : '';
-    }
-
-    const loaded = await configModule.loadProjectConfigByName({
-        name,
-        applyConfig
-    });
-    if (!loaded) {
-        setObsFlowStatus('读取配置失败：configs/' + name + '.json 不可用。', 'error');
-        return;
-    }
-
-    syncObsProfileNameEverywhere(name);
-    obsFlowPreviewActiveName = name;
-    syncObsQuickProfileSelect();
-    updateObsPreviewUiState();
-    setObsFlowStatus(
-        '正在预览 configs/' + name + '.json。可直接一键复制 OBS 地址；若要回到刚才编辑中的样子，点「回到当前编辑态」。',
-        'success'
+    const shouldSave = confirm(
+        '当前配置还有未保存改动。\n\n点击“确定”先保存再继续' + actionLabel + '；点击“取消”表示不保存继续。'
     );
-    renderSavedConfigRepoList(savedConfigNamesCache);
+    if (shouldSave) {
+        const ok = await saveConfigToProject();
+        return !!ok;
+    }
+    return true;
 }
 
-function restoreObsCurrentConfig() {
-    if (!obsFlowPreviewBaseConfig) {
-        setObsFlowStatus('当前就是编辑态，无需回退。');
+async function startNewProfileConfig() {
+    const goOn = await promptSaveIfDirty('新建');
+    if (!goOn) return;
+    const suggest = getCurrentConfigName() + '-new';
+    const raw = prompt(
+        '新建配置：请输入文件名（不含 .json，将保存为 configs/名称.json）。\n' +
+            '会从内置模板 configs/default.json 载入键位，之后可在画布上编辑。',
+        suggest
+    );
+    if (raw === null) return;
+    const name = String(raw).trim();
+    if (!name) {
+        setObsFlowStatus('已取消新建。');
         return;
     }
-    applyConfig(obsFlowPreviewBaseConfig);
-    syncObsProfileNameEverywhere(obsFlowPreviewBaseProfileName);
-    obsFlowPreviewBaseConfig = null;
-    obsFlowPreviewBaseProfileName = '';
-    obsFlowPreviewActiveName = '';
-    syncObsQuickProfileSelect();
-    updateObsPreviewUiState();
-    setObsFlowStatus('已回到切换前的当前编辑态（未保存）。');
-    renderSavedConfigRepoList(savedConfigNamesCache);
+    if (!isValidProfileFileStem(name)) {
+        alert('名称无效：需 1～80 字符，不能以 . 开头，且不能含 / \\ : * ? " < > | 等符号。');
+        return;
+    }
+    await loadBuiltinDefaultConfig();
+    lastPristineFingerprint = '';
+    isConfigDirty = true;
+    syncObsProfileNameEverywhere(name);
+    setObsFlowStatus('已新建配置「' + name + '」。请编辑后点击「保存当前配置」。', 'success');
+    renderSavedConfigRepoList();
+    invalidateCanvas();
+    updateKeyList();
 }
 
-function syncObsQuickProfileSelect() {
-    const quick = byId('obs-profile-quick-select');
-    const saved = byId('saved-config-select');
-    const input = byId('obs-profile-name');
-    if (!quick || !saved) return;
+async function saveConfigAsNewProfile() {
+    const suggest = getCurrentConfigName() + '-copy';
+    const raw = prompt('另存为：请输入新的配置文件名（不含 .json）', suggest);
+    if (raw === null) return false;
+    const name = String(raw).trim();
+    if (!isValidProfileFileStem(name)) {
+        alert('名称无效：需 1～80 字符，不能以 . 开头，且不能含 / \\ : * ? " < > | 等符号。');
+        return false;
+    }
+    syncObsProfileNameEverywhere(name);
+    return saveConfigToProject();
+}
 
-    const current = input && input.value ? String(input.value).trim() : '';
-    quick.innerHTML = '';
-    const opt0 = document.createElement('option');
-    opt0.value = '';
-    opt0.textContent = '从已保存配置中选择（可选）';
-    quick.appendChild(opt0);
-
-    Array.from(saved.options || []).forEach((opt) => {
-        if (!opt.value) return;
-        const o = document.createElement('option');
-        o.value = opt.value;
-        o.textContent = opt.value;
-        quick.appendChild(o);
-    });
-
-    if (current && Array.from(quick.options).some((o) => o.value === current)) {
-        quick.value = current;
+async function copyObsOverlayUrlOnly() {
+    recomputeDirtyState();
+    await copyObsOverlayUrl(false);
+    if (isConfigDirty) {
+        setObsFlowStatus('已复制地址。有未保存改动时 OBS 仍用上次保存的版本。', 'error');
     } else {
-        quick.value = '';
+        setObsFlowStatus('已复制地址。', 'success');
     }
-    if (obsFlowPreviewActiveName && Array.from(quick.options).some((o) => o.value === obsFlowPreviewActiveName)) {
-        quick.value = obsFlowPreviewActiveName;
-    }
-    updateObsPreviewUiState();
 }
 
-async function previewProjectConfigByName(name) {
-    const safeName = String(name || '').trim();
-    if (!safeName) return;
-    const quick = byId('obs-profile-quick-select');
-    if (quick) quick.value = safeName;
-    await useObsQuickProfile();
-}
-
-async function loadProjectConfigByName(name) {
+async function loadProjectConfigByName(name, options) {
+    const opts = options || {};
     const safeName = String(name || '').trim();
     if (!safeName) return false;
+    if (safeName === getCurrentConfigName()) {
+        return true;
+    }
+    if (!opts.skipDirtyPrompt) {
+        const goOn = await promptSaveIfDirty('切换配置');
+        if (!goOn) return false;
+    }
     const sel = byId('saved-config-select');
     if (!sel) return false;
     sel.value = safeName;
-    const ok = await networkModule.loadSelectedProjectConfig({
+    const loaded = await networkModule.loadSelectedProjectConfig({
         selectEl: sel,
         applyConfig,
         suppressSuccessAlert: true
     });
-    if (!ok) return false;
+    if (!loaded) return false;
 
-    obsFlowPreviewBaseConfig = null;
-    obsFlowPreviewBaseProfileName = '';
-    obsFlowPreviewActiveName = '';
-    const quick = byId('obs-profile-quick-select');
-    if (quick) quick.value = '';
-
+    currentConfigName = safeName;
+    try {
+        setPristineBaselineFromLoadedConfig(loaded);
+    } catch (_) {
+        lastPristineFingerprint = '';
+        isConfigDirty = true;
+    }
     syncObsProfileNameEverywhere(safeName);
-    syncObsQuickProfileSelect();
-    updateObsPreviewUiState();
-    setObsFlowStatus('已加载 configs/' + safeName + '.json 到当前编辑态。', 'success');
+    persistLastActiveProfile(safeName);
+    scheduleBaselineResync();
+    setObsFlowStatus('已切换配置。', 'success');
+    renderSavedConfigRepoList();
+    updateKeyList();
+    invalidateCanvas();
     return true;
 }
 
@@ -723,70 +900,103 @@ async function deleteProjectConfigByName(name) {
         onDeleted: refreshSavedConfigSelect
     });
     if (!ok) return false;
-    if (obsFlowPreviewActiveName === safeName) {
-        restoreObsCurrentConfig();
-    }
-    setObsFlowStatus('已删除配置：configs/' + safeName + '.json');
+    setObsFlowStatus('已删除配置：configs/' + safeName + '.json', 'success');
     return true;
 }
 
-function renderSavedConfigRepoList(names) {
-    savedConfigNamesCache = Array.isArray(names) ? names.slice() : [];
+function normalizeConfigSummaryEntries(items) {
+    if (!Array.isArray(items)) return [];
+    return items
+        .map((entry) => {
+            if (typeof entry === 'string') {
+                return {
+                    name: entry,
+                    keyCount: 0,
+                    author: '',
+                    updatedAt: '',
+                    fileModified: ''
+                };
+            }
+            return {
+                name: String(entry.name || ''),
+                keyCount: Number(entry.keyCount) || 0,
+                author: String(entry.author || ''),
+                updatedAt: String(entry.updatedAt || ''),
+                fileModified: String(entry.fileModified || '')
+            };
+        })
+        .filter((x) => x.name);
+}
+
+function formatSchemeListDate(iso, fileModified) {
+    if (iso) {
+        try {
+            const d = new Date(iso);
+            if (!Number.isNaN(d.getTime())) {
+                return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+            }
+        } catch (_) {
+            /* ignore */
+        }
+    }
+    return fileModified || '—';
+}
+
+/** 传入 `items` 时更新缓存并渲染；不传则按上次缓存重绘（切换方案后仍保留作者等信息）。 */
+function renderSavedConfigRepoList(items) {
+    if (items !== undefined) {
+        savedConfigSummariesCache = normalizeConfigSummaryEntries(items);
+    }
+    savedConfigNamesCache = savedConfigSummariesCache.map((x) => x.name);
     updateSavedConfigCountText(savedConfigNamesCache);
 
     const list = byId('saved-config-list');
     if (!list) return;
     list.innerHTML = '';
 
-    if (!savedConfigNamesCache.length) {
+    const currentStem = normalizeProfileNameOrFallback(currentConfigName);
+
+    if (!savedConfigSummariesCache.length) {
         const empty = document.createElement('div');
         empty.className = 'config-repo-empty';
-        empty.textContent = '暂无项目配置，先在左侧输入名称后点击「保存到项目」。';
+        empty.textContent = '暂无配置。请先点击上方「新建配置（从默认模板）」。';
         list.appendChild(empty);
         return;
     }
 
-    savedConfigNamesCache.forEach((name) => {
-        const isPreviewingThis = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName === name);
+    savedConfigSummariesCache.forEach((row) => {
+        const name = row.name;
+        const isCurrent = currentStem === name;
         const item = document.createElement('div');
         item.className = 'config-repo-item';
-        if (isPreviewingThis) item.classList.add('is-previewing');
+        if (isCurrent) item.classList.add('is-current');
 
-        const title = document.createElement('div');
-        title.className = 'config-repo-name';
-        title.textContent = isPreviewingThis ? name + '（正在预览）' : name;
-        title.title = name;
-        item.appendChild(title);
+        const main = document.createElement('div');
+        main.className = 'config-repo-main';
+
+        const title = document.createElement('button');
+        title.type = 'button';
+        title.className = 'config-repo-name config-repo-open-btn';
+        title.textContent = name + (isCurrent ? '（当前）' : '');
+        title.title = '切换到该配置';
+        title.addEventListener('click', () => {
+            loadProjectConfigByName(name).then(() => {
+                renderSavedConfigRepoList();
+            });
+        });
+        main.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'config-repo-meta';
+        const authorDisp = row.author ? row.author : '—';
+        const dateDisp = formatSchemeListDate(row.updatedAt, row.fileModified);
+        meta.textContent = `作者：${authorDisp} · 更新：${dateDisp} · ${row.keyCount} 键`;
+        main.appendChild(meta);
+
+        item.appendChild(main);
 
         const actions = document.createElement('div');
         actions.className = 'config-repo-actions';
-
-        const previewBtn = document.createElement('button');
-        previewBtn.type = 'button';
-        previewBtn.className = isPreviewingThis ? 'btn btn-danger' : 'btn';
-        previewBtn.textContent = isPreviewingThis ? '↩ 结束阅览' : '👁 预览';
-        previewBtn.addEventListener('click', () => {
-            const previewingNow = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName === name);
-            if (previewingNow) {
-                restoreObsCurrentConfig();
-            } else {
-                previewProjectConfigByName(name).then(() => {
-                    renderSavedConfigRepoList(savedConfigNamesCache);
-                });
-            }
-        });
-        actions.appendChild(previewBtn);
-
-        const loadBtn = document.createElement('button');
-        loadBtn.type = 'button';
-        loadBtn.className = 'btn btn-primary';
-        loadBtn.textContent = '📂 加载为当前';
-        loadBtn.addEventListener('click', () => {
-            loadProjectConfigByName(name).then(() => {
-                renderSavedConfigRepoList(savedConfigNamesCache);
-            });
-        });
-        actions.appendChild(loadBtn);
 
         const delBtn = document.createElement('button');
         delBtn.type = 'button';
@@ -794,7 +1004,7 @@ function renderSavedConfigRepoList(names) {
         delBtn.textContent = '🗑 删除';
         delBtn.addEventListener('click', () => {
             deleteProjectConfigByName(name).then(() => {
-                renderSavedConfigRepoList(savedConfigNamesCache);
+                renderSavedConfigRepoList();
             });
         });
         actions.appendChild(delBtn);
@@ -820,65 +1030,11 @@ async function copyObsOverlayUrl(showNotice = true) {
     }
 }
 
-function adoptSavedConfigAsObsProfile() {
-    const sel = byId('saved-config-select');
-    if (sel && sel.value) syncObsProfileNameEverywhere(sel.value);
-    syncObsQuickProfileSelect();
-    if (sel && sel.value) {
-        setObsFlowStatus('已把「已保存配置」同步为 OBS 配置名：' + sel.value);
-    }
-    updateObsPreviewUiState();
-}
-
 async function quickSaveAndCopyObsUrl() {
-    const input = byId('obs-profile-name');
-    if (!input) return;
-    const raw = String(input.value || '').trim();
-    const profileName = raw || configModule.OVERLAY_FALLBACK_PROFILE_NAME;
-    input.value = profileName;
-    const previewing = !!(obsFlowPreviewBaseConfig && obsFlowPreviewActiveName);
-
-    if (previewing) {
-        const copiedUrl = await copyObsOverlayUrl(false);
-        setObsFlowStatus('当前为预览态，已复制 OBS 地址（未保存）：' + copiedUrl, 'success');
-        return;
-    }
-
-    if (hasSavedProfile(profileName)) {
-        const ok = confirm(
-            '将覆盖已有配置：configs/' +
-                profileName +
-                '.json\n\n是否继续保存并复制 OBS 地址？'
-        );
-        if (!ok) {
-            setObsFlowStatus('已取消覆盖，未保存。');
-            return;
-        }
-    }
-
-    const saved = await networkModule.saveConfigToProject({
-        nameInput: { value: profileName },
-        getCurrentConfig: buildCurrentConfigObject,
-        onSaved: refreshSavedConfigSelect,
-        suppressSuccessAlert: true
-    });
-    if (!saved) return;
-
-    const savedSelect = byId('saved-config-select');
-    if (savedSelect) {
-        const hit = Array.from(savedSelect.options || []).some((opt) => {
-            if (opt.value === profileName) {
-                savedSelect.value = profileName;
-                return true;
-            }
-            return false;
-        });
-        if (!hit) savedSelect.value = '';
-    }
-
-    const copiedUrl = await copyObsOverlayUrl(false);
-    setObsFlowStatus('完成：已保存 configs/' + profileName + '.json，并复制 OBS 地址。', 'success');
-    console.log('OBS 地址已复制:', copiedUrl);
+    const ok = await saveConfigToProject();
+    if (!ok) return;
+    await copyObsOverlayUrl(false);
+    setObsFlowStatus('已保存并复制地址。', 'success');
 }
 
 function switchConsoleTab(tabId) {
@@ -886,12 +1042,10 @@ function switchConsoleTab(tabId) {
 
     const appearance = byId('tab-appearance');
     const layout = byId('tab-layout');
-    const snap = byId('tab-snap');
     const config = byId('tab-config');
 
     if (appearance) appearance.classList.toggle('active', target === 'appearance');
     if (layout) layout.classList.toggle('active', target === 'layout');
-    if (snap) snap.classList.toggle('active', target === 'layout');
     if (config) config.classList.toggle('active', target === 'config');
 
     const appearanceBtn = byId('tab-btn-appearance');
@@ -902,22 +1056,221 @@ function switchConsoleTab(tabId) {
     if (configBtn) configBtn.classList.toggle('active', target === 'config');
 }
 
+/** 将视口坐标转为画布逻辑坐标（预览区 CSS 缩放后与 bitmap 一致） */
+function eventCanvasToLogical(canvasEl, clientX, clientY) {
+    if (!canvasEl) {
+        return { x: 0, y: 0 };
+    }
+    const rect = canvasEl.getBoundingClientRect();
+    const bw = canvasEl.width;
+    const bh = canvasEl.height;
+    const sx = rect.width > 0 ? bw / rect.width : 1;
+    const sy = rect.height > 0 ? bh / rect.height : 1;
+    return {
+        x: (clientX - rect.left) * sx,
+        y: (clientY - rect.top) * sy
+    };
+}
+
+function canvasClientToLogical(clientX, clientY) {
+    return eventCanvasToLogical(canvas, clientX, clientY);
+}
+
+function clampCanvasWidth(v) {
+    return Math.max(320, Math.min(3840, Math.round(Number(v)) || 1200));
+}
+
+function clampCanvasHeight(v) {
+    return Math.max(200, Math.min(2160, Math.round(Number(v)) || 400));
+}
+
+function readCanvasDimensionsFromNumberInputs() {
+    const wEl = byId('console-canvas-width');
+    const hEl = byId('console-canvas-height');
+    const rawW = wEl ? String(wEl.value).trim() : '';
+    const rawH = hEl ? String(hEl.value).trim() : '';
+    const w = rawW === '' ? NaN : parseInt(rawW, 10);
+    const h = rawH === '' ? NaN : parseInt(rawH, 10);
+    const cw = Number.isFinite(w) ? clampCanvasWidth(w) : CONFIG.canvasWidth;
+    const ch = Number.isFinite(h) ? clampCanvasHeight(h) : CONFIG.canvasHeight;
+    return {
+        w: cw,
+        h: ch,
+        finiteW: Number.isFinite(w),
+        finiteH: Number.isFinite(h)
+    };
+}
+
+function refreshConsoleCanvasApplyButtonState() {
+    if (IS_OVERLAY_MODE) return;
+    const btn = byId('console-canvas-apply-btn');
+    if (!btn) return;
+    const { w, h, finiteW, finiteH } = readCanvasDimensionsFromNumberInputs();
+    const pending =
+        !finiteW || !finiteH || w !== CONFIG.canvasWidth || h !== CONFIG.canvasHeight;
+    btn.classList.toggle('is-pending', pending);
+    btn.title = pending
+        ? '数字与当前画布不一致，点击应用到画布'
+        : '将当前宽高数字应用到画布';
+}
+
+function syncPreviewCanvasDimensionUi() {
+    if (IS_OVERLAY_MODE) return;
+    const nw = clampCanvasWidth(CONFIG.canvasWidth);
+    const nh = clampCanvasHeight(CONFIG.canvasHeight);
+    const wEl = byId('console-canvas-width');
+    const hEl = byId('console-canvas-height');
+    const wSl = byId('console-canvas-width-slider');
+    const hSl = byId('console-canvas-height-slider');
+    if (wEl) wEl.value = String(nw);
+    if (hEl) hEl.value = String(nh);
+    if (wSl) wSl.value = String(nw);
+    if (hSl) hSl.value = String(nh);
+    refreshConsoleCanvasApplyButtonState();
+}
+
+function setupPreviewCanvasSizeControls() {
+    if (IS_OVERLAY_MODE) return;
+    syncPreviewCanvasDimensionUi();
+    const wSl = byId('console-canvas-width-slider');
+    const hSl = byId('console-canvas-height-slider');
+    const wNum = byId('console-canvas-width');
+    const hNum = byId('console-canvas-height');
+    if (wSl) {
+        wSl.addEventListener('input', () => {
+            const v = parseInt(wSl.value, 10);
+            if (!Number.isFinite(v)) return;
+            applyConsoleCanvasDimensions(v, CONFIG.canvasHeight);
+        });
+    }
+    if (hSl) {
+        hSl.addEventListener('input', () => {
+            const v = parseInt(hSl.value, 10);
+            if (!Number.isFinite(v)) return;
+            applyConsoleCanvasDimensions(CONFIG.canvasWidth, v);
+        });
+    }
+    if (wNum) {
+        wNum.addEventListener('input', refreshConsoleCanvasApplyButtonState);
+        wNum.addEventListener('change', refreshConsoleCanvasApplyButtonState);
+    }
+    if (hNum) {
+        hNum.addEventListener('input', refreshConsoleCanvasApplyButtonState);
+        hNum.addEventListener('change', refreshConsoleCanvasApplyButtonState);
+    }
+}
+
+/** 逻辑画布尺寸（保存到配置）；预览区仅 CSS 缩放，不改变逻辑宽高 */
+function applyConsoleCanvasDimensions(w, h) {
+    if (IS_OVERLAY_MODE || !canvas) return;
+    const nw = clampCanvasWidth(w);
+    const nh = clampCanvasHeight(h);
+    CONFIG.canvasWidth = nw;
+    CONFIG.canvasHeight = nh;
+    canvas.width = nw;
+    canvas.height = nh;
+    fitConsoleCanvasToPreviewStage();
+    invalidateCanvas();
+    syncPreviewCanvasDimensionUi();
+    scheduleObsDirtyUiRefresh();
+}
+
+function applyConsoleCanvasSizeFromInputs() {
+    const wEl = byId('console-canvas-width');
+    const hEl = byId('console-canvas-height');
+    const w = wEl ? parseInt(wEl.value, 10) : NaN;
+    const h = hEl ? parseInt(hEl.value, 10) : NaN;
+    if (!Number.isFinite(w) || !Number.isFinite(h)) {
+        alert('请输入有效的宽高数字。');
+        refreshConsoleCanvasApplyButtonState();
+        return;
+    }
+    applyConsoleCanvasDimensions(w, h);
+}
+
+/** 控制台预览：画布按逻辑像素 1:1 显示，不缩放进预览区（避免改尺寸时「画面被挤小」的错觉）；过大时在预览区内滚动。 */
 function fitConsoleCanvasToPreviewStage() {
     if (IS_OVERLAY_MODE || !canvas) return;
-    const stage = byId('preview-stage');
-    if (!stage) return;
 
-    const stageStyle = getComputedStyle(stage);
-    const padLeft = parseFloat(stageStyle.paddingLeft || '0') || 0;
-    const padRight = parseFloat(stageStyle.paddingRight || '0') || 0;
-    const available = Math.max(1200, Math.floor(stage.clientWidth - padLeft - padRight - 24));
+    const logicalW = Math.max(1, Math.round(Number(CONFIG.canvasWidth)) || 1200);
+    const logicalH = Math.max(1, Math.round(Number(CONFIG.canvasHeight)) || 400);
 
-    if (CONFIG.canvasWidth !== available) {
-        CONFIG.canvasWidth = available;
-        canvas.width = CONFIG.canvasWidth;
-        canvas.height = CONFIG.canvasHeight;
+    if (canvas.width !== logicalW || canvas.height !== logicalH) {
+        canvas.width = logicalW;
+        canvas.height = logicalH;
         invalidateCanvas();
     }
+
+    canvas.style.width = logicalW + 'px';
+    canvas.style.height = logicalH + 'px';
+
+    const container = byId('keyboard-container');
+    if (container) {
+        container.style.width = logicalW + 'px';
+        container.style.height = logicalH + 'px';
+    }
+}
+
+let previewCanvasResizeState = null;
+
+/** 预览区画布右/下/东南角拖动，按当前显示缩放换算为逻辑宽高 */
+function setupPreviewCanvasEdgeResize() {
+    if (IS_OVERLAY_MODE) return;
+    const specs = [
+        { id: 'vk-canvas-resize-e', edge: 'e' },
+        { id: 'vk-canvas-resize-s', edge: 's' },
+        { id: 'vk-canvas-resize-se', edge: 'se' }
+    ];
+
+    function onMove(e) {
+        if (!previewCanvasResizeState) return;
+        const st = previewCanvasResizeState;
+        const dx = e.clientX - st.startClientX;
+        const dy = e.clientY - st.startClientY;
+        let nw = st.startLogicalW;
+        let nh = st.startLogicalH;
+        if (st.edge.includes('e')) {
+            nw = Math.round(st.startLogicalW + dx * st.scaleX);
+        }
+        if (st.edge.includes('s')) {
+            nh = Math.round(st.startLogicalH + dy * st.scaleY);
+        }
+        applyConsoleCanvasDimensions(nw, nh);
+    }
+
+    function onUp() {
+        previewCanvasResizeState = null;
+        document.body.classList.remove('is-resizing-vk-canvas');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+    }
+
+    specs.forEach(({ id, edge }) => {
+        const el = byId(id);
+        if (!el) return;
+        el.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const cont = byId('keyboard-container');
+            if (!cont || !canvas) return;
+            const rect = cont.getBoundingClientRect();
+            const scaleX = rect.width > 0 ? CONFIG.canvasWidth / rect.width : 1;
+            const scaleY = rect.height > 0 ? CONFIG.canvasHeight / rect.height : 1;
+            previewCanvasResizeState = {
+                edge,
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                startLogicalW: CONFIG.canvasWidth,
+                startLogicalH: CONFIG.canvasHeight,
+                scaleX,
+                scaleY
+            };
+            document.body.classList.add('is-resizing-vk-canvas');
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        });
+    });
 }
 
 function setupVerticalLayoutSplitter() {
@@ -971,6 +1324,7 @@ function setupVerticalLayoutSplitter() {
 document.addEventListener('DOMContentLoaded', async () => {
     setupDeclarativeControlBindings();
     updateObsOverlayUrlField();
+    updateObsWorkflowUi();
     switchConsoleTab('appearance');
     setupVerticalLayoutSplitter();
 
@@ -980,6 +1334,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     canvas.width = CONFIG.canvasWidth;
     canvas.height = CONFIG.canvasHeight;
     fitConsoleCanvasToPreviewStage();
+    setupPreviewCanvasEdgeResize();
+    setupPreviewCanvasSizeControls();
 
     if (!IS_OVERLAY_MODE) {
         // 键盘事件
@@ -1008,17 +1364,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (snapCenterControls) snapCenterControls.style.display = snapConfig.toCenter ? 'block' : 'none';
     if (snapAssistControls) snapAssistControls.style.display = snapConfig.toAssist ? 'block' : 'none';
 
-    await loadBuiltinDefaultConfig();
-
-    if (IS_OVERLAY_MODE) {
-        await configModule.loadOverlayServerProfile({ applyConfig });
-    } else {
-        loadSavedConfig();
-    }
-
-    updateKeyList();
-    invalidateCanvas();
-
     if (!IS_OVERLAY_MODE) {
         setupKeyEditModalListeners();
     }
@@ -1026,6 +1371,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectWebSocket();
 
     await refreshSavedConfigSelect();
+
+    if (IS_OVERLAY_MODE) {
+        await configModule.loadOverlayServerProfile({ applyConfig });
+    } else {
+        const names = savedConfigNamesCache.slice();
+        let target = '';
+        try {
+            target = (localStorage.getItem(LAST_ACTIVE_PROFILE_STORAGE_KEY) || '').trim();
+        } catch (_) {
+            target = '';
+        }
+        if (!target || !names.includes(target)) {
+            target = names.includes('default') ? 'default' : '';
+        }
+        if (target) {
+            await loadProjectConfigByName(target, { skipDirtyPrompt: true });
+        } else {
+            await loadBuiltinDefaultConfig();
+            loadSavedConfig();
+            currentConfigName = getCurrentConfigName();
+            try {
+                capturePristineFingerprintBaseline();
+            } catch (_) {
+                lastPristineFingerprint = '';
+                isConfigDirty = true;
+            }
+            scheduleBaselineResync();
+            syncObsProfileNameEverywhere(currentConfigName);
+        }
+    }
+
+    updateKeyList();
+    invalidateCanvas();
+    updateObsWorkflowUi();
 
     updateUndoRedoButtons();
     fitConsoleCanvasToPreviewStage();
@@ -1047,6 +1426,7 @@ async function loadBuiltinDefaultConfig() {
 
 // ==================== 渲染 ====================
 function invalidateCanvas() {
+    scheduleObsDirtyUiRefresh();
     if (canvasRafId !== null) return;
     canvasRafId = requestAnimationFrame(render);
 }
@@ -1408,9 +1788,7 @@ function handleMouseWheel(e) {
 
 // 处理双击事件
 function handleDoubleClick(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = canvasClientToLogical(e.clientX, e.clientY);
 
     // 从后往前找，优先选中上层的按键
     for (let i = keys.length - 1; i >= 0; i--) {
@@ -1791,46 +2169,62 @@ async function refreshSavedConfigSelect() {
         selectEl: byId('saved-config-select'),
         onNames: renderSavedConfigRepoList
     });
-    syncObsQuickProfileSelect();
+    syncObsProfileNameEverywhere(getCurrentConfigName());
     updateObsOverlayUrlField();
 }
 
 async function saveConfigToProject() {
+    const profileName = getCurrentConfigName();
+    if (
+        hasSavedProfile(profileName) &&
+        !confirm('将覆盖已有配置：configs/' + profileName + '.json\n\n是否继续保存？')
+    ) {
+        setObsFlowStatus('已取消保存。');
+        return false;
+    }
     const ok = await networkModule.saveConfigToProject({
-        nameInput: byId('config-save-name'),
-        getCurrentConfig: buildCurrentConfigObject,
-        onSaved: refreshSavedConfigSelect
+        nameInput: { value: profileName },
+        getCurrentConfig: () => {
+            const o = buildCurrentConfigObject();
+            return {
+                ...o,
+                meta: {
+                    author: String(profileMeta.author || '').trim(),
+                    updatedAt: new Date().toISOString()
+                }
+            };
+        },
+        onSaved: refreshSavedConfigSelect,
+        retainNameInput: true,
+        suppressSuccessAlert: true
     });
     if (ok) {
-        setObsFlowStatus('已保存到项目。可在顶部直接复制新的 OBS 地址。', 'success');
+        currentConfigName = profileName;
+        profileMeta = {
+            author: String(profileMeta.author || '').trim(),
+            updatedAt: new Date().toISOString()
+        };
+        try {
+            capturePristineFingerprintBaseline();
+        } catch (_) {
+            lastPristineFingerprint = '';
+            isConfigDirty = true;
+        }
+        syncObsProfileNameEverywhere(profileName);
+        persistLastActiveProfile(profileName);
+        scheduleBaselineResync();
+        setObsFlowStatus('已保存配置：configs/' + profileName + '.json', 'success');
     }
     return ok;
 }
 
-function exportConfigJsonFile() {
-    const config = buildCurrentConfigObject();
-    configModule.exportConfigJsonFile(config);
-}
-
 async function loadSelectedProjectConfig() {
     const sel = byId('saved-config-select');
-    const ok = await networkModule.loadSelectedProjectConfig({
-        selectEl: sel,
-        applyConfig
-    });
-    if (!ok) return false;
-    obsFlowPreviewBaseConfig = null;
-    obsFlowPreviewBaseProfileName = '';
-    obsFlowPreviewActiveName = '';
-    if (sel && sel.value) {
-        const input = byId('obs-profile-name');
-        if (input) input.value = sel.value;
-        setObsFlowStatus('已加载配置：' + sel.value + '。可直接复制或一键保存并复制 OBS 地址。');
+    if (!sel || !sel.value) {
+        alert('请先从列表或下拉框选择一个配置');
+        return false;
     }
-    updateObsOverlayUrlField();
-    syncObsQuickProfileSelect();
-    updateObsPreviewUiState();
-    return true;
+    return loadProjectConfigByName(sel.value);
 }
 
 async function deleteSelectedProjectConfig() {
@@ -1841,12 +2235,12 @@ async function deleteSelectedProjectConfig() {
     return ok;
 }
 
-function loadConfig(event) {
-    configModule.loadConfigFromFile(event, applyConfig, refreshSavedConfigSelect);
+async function openConfigsFolder() {
+    const ok = await networkModule.openConfigsFolder();
+    if (ok) {
+        setObsFlowStatus('已尝试打开配置文件夹。把 .json 放进去后点「刷新列表」。', 'success');
+    }
 }
-
-/** 低于此版本的浏览器缓存会被忽略，避免旧版默认布局覆盖仓库 configs/default.json。 */
-const PERSISTED_CONFIG_MIN_VERSION = configModule.PERSISTED_CONFIG_MIN_VERSION;
 
 function loadSavedConfig() {
     configModule.loadSavedConfig({
@@ -1858,6 +2252,9 @@ function loadSavedConfig() {
 function applyConfig(config) {
     configModule.applyConfig(config, {
         CONFIG,
+        resetConfigDefaults: () => {
+            Object.assign(CONFIG, DEFAULT_CONFIG_TEMPLATE);
+        },
         keyFromPersistedData,
         setKeys: (nextKeys) => {
             keys = nextKeys;
@@ -1893,6 +2290,7 @@ function applyConfig(config) {
                 canvas.height = CONFIG.canvasHeight;
                 fitConsoleCanvasToPreviewStage();
             }
+            syncPreviewCanvasDimensionUi();
         },
         ensureKeySizeDefaults: () => {
             keys.forEach((k) => {
@@ -1903,32 +2301,41 @@ function applyConfig(config) {
         updateKeyList,
         resetLayoutHistory
     });
+    if (config && typeof config === 'object' && config.meta && typeof config.meta === 'object') {
+        profileMeta = {
+            author: String(config.meta.author != null ? config.meta.author : '').trim(),
+            updatedAt: String(config.meta.updatedAt != null ? config.meta.updatedAt : '').trim()
+        };
+    } else {
+        profileMeta = { author: '', updatedAt: '' };
+    }
 }
 
 // 配置保存说明（用户向）
 function showConfigLocation() {
     const message = `配置保存说明：
 
-1. 项目内配置（推荐）
-   - 内置默认键位来自仓库内 configs/default.json（可编辑该文件改默认布局）
+1. 推荐操作流程（最简单）
    - 使用 start-keyboard.bat 启动后，用 http://localhost:8080 打开页面
-   - 在设置里填写名称，点「保存到项目」→ 写入本仓库 configs/ 目录（*.json）
-   - 下拉框「刷新列表」后可选中并「加载所选」
+   - 会自动载入你上次用的方案；没有的话会试 default，再没有则用内置模板
+   - 在「配置」里点列表名字切换 → 到「外观」「键位」里改 → 回「配置」点「保存」
+   - 想改名用「另存为」；当前名字看最上面 OBS 区域
+   - 需要给 OBS 用时，点最上面的「保存并复制」最省事
    - 换电脑时把整个项目文件夹拷走即可带上这些 json
 
 2. OBS 浏览器源（重要）
-   - OBS 内嵌浏览器与桌面 Chrome 的 localStorage 不互通，不能指望「控制台里调好的样子」自动出现在 OBS
-   - 推荐直接用页顶「⚡ 一键保存并复制 OBS 地址」：会保存到 configs/配置名.json 并复制带 ?config= 的链接
-   - 若不走一键，也可手动保存一份名为 obs 的配置（configs/obs.json），叠加层会优先从服务端加载该文件
-   - 请勿把控制台主页 http://localhost:8080/ 当作 OBS 源（会带整页 UI，且仍无本地缓存）
+   - OBS 里的浏览器和桌面 Chrome 各记各的，控制台里改完不会自动出现在 OBS
+   - 请用最上面输入框里的地址（/overlay?config=…）做浏览器源
+   - 有没保存的改动时，「复制链接」仍是旧版本；建议「保存并复制」
+   - 不要用本页主页地址当 OBS 源（会带整页编辑界面）
 
 3. 浏览器本地缓存
-   - 每次成功保存到项目或导出时，会同步写入当前浏览器的 localStorage
-   - 同一浏览器再次打开页面会自动尝试恢复上次配置（配置版本 ≥5；更旧的缓存会被丢弃以免盖住新版默认布局）
+   - 每次保存到项目时，会同时记在浏览器里
+   - 同一浏览器再打开会尽量恢复上次方案（缓存须为含 keys 的 JSON；异常格式会丢弃以免盖住项目内配置）
 
-4. 导出 / 导入文件
-   - 「导出 JSON」：下载到本机任意位置，便于备份或发给别人
-   - 「从文件加载」：选择 .json 文件导入（不经过 configs/ 目录也可以）
+4. 从别人发来的 json
+   - 点「打开配置文件夹」，把 .json 文件放进去
+   - 回到页面点「刷新列表」就能选到
 
 5. 配置内容包含
    - 按键位置、大小、文字、单键颜色与背景图等

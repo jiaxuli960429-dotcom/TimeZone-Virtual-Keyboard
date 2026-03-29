@@ -10,6 +10,15 @@
             if (!r.ok) throw new Error('bad status');
             const data = await r.json();
             const names = data.names || [];
+            const items = Array.isArray(data.items)
+                ? data.items
+                : names.map((name) => ({
+                      name,
+                      keyCount: 0,
+                      author: '',
+                      updatedAt: '',
+                      fileModified: ''
+                  }));
             sel.innerHTML = '';
             const opt0 = document.createElement('option');
             opt0.value = '';
@@ -22,7 +31,7 @@
                 sel.appendChild(o);
             });
             if (typeof opts.onNames === 'function') {
-                opts.onNames(names.slice());
+                opts.onNames(items.slice());
             }
             return names;
         } catch (e) {
@@ -81,7 +90,9 @@
             if (!suppressSuccessAlert) {
                 alert('已保存到项目 configs/ 目录：' + (data.name || name) + '.json');
             }
-            if (nameInput) nameInput.value = '';
+            if (nameInput && opts.retainNameInput !== true) {
+                nameInput.value = '';
+            }
             if (typeof opts.onSaved === 'function') opts.onSaved();
             return true;
         } catch (err) {
@@ -112,7 +123,7 @@
             if (!suppressSuccessAlert) {
                 alert('已从项目 configs/ 加载：' + name);
             }
-            return true;
+            return config;
         } catch (e) {
             console.error(e);
             alert('加载失败（请确认本机服务已启动）');
@@ -149,6 +160,27 @@
         }
     }
 
+    async function openConfigsFolder() {
+        try {
+            const r = await fetch('/api/config/open-folder', { method: 'POST' });
+            let data = {};
+            try {
+                data = await r.json();
+            } catch (_) {
+                data = {};
+            }
+            if (!r.ok || !data.ok) {
+                alert(data.error || '打开配置文件夹失败');
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.error(e);
+            alert('打开配置文件夹失败（请确认本机服务已启动）');
+            return false;
+        }
+    }
+
     function handleWebSocketMessage(data, pressedKeys, invalidateCanvas) {
         if (!pressedKeys) return;
         if (data.type === 'key') {
@@ -168,11 +200,18 @@
         const st = state || {};
         if (st.suppressStatus) return st.wsStatusFadeTimerId || null;
         let statusDiv = document.getElementById('ws-status');
+        const mount = document.getElementById('ws-status-mount');
         if (!statusDiv) {
             statusDiv = document.createElement('div');
             statusDiv.id = 'ws-status';
             statusDiv.className = 'ws-status-chip';
-            document.body.appendChild(statusDiv);
+            if (mount) {
+                mount.appendChild(statusDiv);
+            } else {
+                document.body.appendChild(statusDiv);
+            }
+        } else if (mount && statusDiv.parentNode !== mount) {
+            mount.appendChild(statusDiv);
         }
 
         if (st.wsStatusFadeTimerId !== null) {
@@ -190,11 +229,7 @@
             statusDiv.classList.add('disconnected');
         }
 
-        st.wsStatusFadeTimerId = setTimeout(() => {
-            statusDiv.style.opacity = '0.58';
-            st.wsStatusFadeTimerId = null;
-        }, 5000);
-        return st.wsStatusFadeTimerId;
+        return null;
     }
 
     function connectWebSocket(options) {
@@ -254,6 +289,7 @@
         saveConfigToProject,
         loadSelectedProjectConfig,
         deleteSelectedProjectConfig,
+        openConfigsFolder,
         handleWebSocketMessage,
         showConnectionStatus,
         connectWebSocket
