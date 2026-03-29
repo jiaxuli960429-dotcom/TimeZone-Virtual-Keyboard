@@ -10,7 +10,7 @@
 
 ### 我是主播，只想用起来
 
-**不想装 Python：** 到本仓库 **[GitHub Releases](https://github.com/jiaxuli960429-dotcom/TimeZone-Virtual-Keyboard/releases)** 下载最新的 **`TimeZoneKeyboard-Windows.zip`**，解压后进入 **`TimeZoneKeyboard`** 文件夹，双击 **`start-keyboard.bat`** 即可（无需 Python）。
+**不想装 Python：** 到本仓库 **[GitHub Releases](https://github.com/jiaxuli960429-dotcom/TimeZone-Virtual-Keyboard/releases)** 下载 **`TimeZoneKeyboard.exe`**，放到任意文件夹后**双击运行**即可（无需 Python；首次启动可能略慢，属正常现象）。使用说明仍以仓库里的 **[使用说明.md](./使用说明.md)** 为准。
 
 **从源码运行：** 克隆仓库后需要本机已安装 Python，再双击根目录 **`start-keyboard.bat`** 或执行 `python key_server.py`。
 
@@ -54,17 +54,17 @@ python key_server.py
 
 浏览器打开 **`http://localhost:8080`**（勿长期依赖 `file://` 打开 `index.html`，否则配置 API 与保存不可用）。
 
-### 维护者：发布带 Windows zip 的 Release
+### 维护者：发布 Windows `.exe` 的 Release
 
-1. 确保 `main`/`master` 上代码已就绪。
+1. 确保默认分支上代码已就绪。
 2. 创建并推送版本标签（示例）：
 
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   git tag v1.0.1
+   git push origin v1.0.1
    ```
 
-3. GitHub Actions 会执行 **`.github/workflows/release-windows.yml`**，生成 **`TimeZoneKeyboard-Windows.zip`** 并挂到对应 Release。
+3. GitHub Actions 会执行 **`.github/workflows/release-windows.yml`**，构建 **`TimeZoneKeyboard.exe`** 并挂到对应 Release。
 
 本地试打包：
 
@@ -72,7 +72,7 @@ python key_server.py
 powershell -ExecutionPolicy Bypass -File scripts\build_windows_release.ps1
 ```
 
-产物在 **`dist\TimeZoneKeyboard\`** 与 **`dist\TimeZoneKeyboard-Windows.zip`**。
+产物：**`dist\TimeZoneKeyboard.exe`**（已列入 `.gitignore`，勿提交）。
 
 ---
 
@@ -84,7 +84,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_release.ps1
 ├── js/                         # 渲染、配置、网络、交互等模块
 ├── key_server.py               # WebSocket + HTTP（静态资源 + /api/config*）
 ├── configs/                    # 方案 JSON（default 为内置默认布局）
-├── .github/workflows/          # Release 自动构建 Windows zip
+├── .github/workflows/          # Release 自动构建 Windows .exe
 ├── scripts/                    # generate_default_layout.py、build_windows_release.ps1
 ├── 使用说明.md                  # 面向主播的详细步骤
 ├── USER_GUIDE.txt              # 使用说明（纯文本）

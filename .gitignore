@@ -13,7 +13,7 @@ configs/*.json
 *.temp
 
 # ------------------------------
-# Archives
+# Archives (local packaging; do not commit)
 # ------------------------------
 *.zip
 *.rar
@@ -29,9 +29,17 @@ __pycache__/
 .venv/
 venv/
 .env
+*.egg-info/
+*.egg
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # ------------------------------
-# Build outputs / binaries
+# Build outputs (PyInstaller, etc.) — never commit
 # ------------------------------
 /build/
 /dist/
@@ -39,6 +47,8 @@ venv/
 *.dll
 *.so
 *.dylib
+*.manifest
+*.spec.bak
 
 # ------------------------------
 # OS generated

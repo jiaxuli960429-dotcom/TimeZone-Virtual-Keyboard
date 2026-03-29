@@ -11,10 +11,9 @@
 ----------------------------------------
 一、启动
 ----------------------------------------
-（免 Python：到 GitHub Releases 下载 TimeZoneKeyboard-Windows.zip，
- 解压后打开 TimeZoneKeyboard 文件夹，双击 start-keyboard.bat。）
+（免 Python：到 GitHub Releases 下载 TimeZoneKeyboard.exe，双击运行。）
 
-1. 双击 start-keyboard.bat（源码版在仓库根目录，需已装 Python）
+1. 双击 TimeZoneKeyboard.exe（源码版：仓库根目录 start-keyboard.bat，需已装 Python）
 2. 等待浏览器打开，地址必须是：
    http://localhost:8080
 3. 不要双击 index.html 用“本地文件”打开，否则无法保存配置。
@@ -35,7 +34,7 @@
 ----------------------------------------
 控制台预览区附近会显示例如：
   全局按键捕获：已连接
-若未连接，按键在游戏里可能不亮。请先保持 bat 已运行。
+若未连接，按键在游戏里可能不亮。请先保持 TimeZoneKeyboard.exe（或 bat）已运行。
 
 ----------------------------------------
 四、保存方案

@@ -59,7 +59,8 @@
   ```
 
 - 若改 WebSocket 消息 JSON 形状，必须同步 **`js/keyboard_network_module.js`**（及消费处）。
-- **Windows 免 Python 发行包**：由 **`scripts/build_windows_release.ps1`** + **`key_server.spec`** 生成；推送到远程的标签 **`v*`**（如 `v1.0.0`）会触发 **`.github/workflows/release-windows.yml`**，向 **GitHub Release** 上传 **`TimeZoneKeyboard-Windows.zip`**。若改动影响 `key_server.py` 或静态资源，发版前应本地执行该脚本自检。
+- **Windows 免 Python 发行包**：由 **`scripts/build_windows_release.ps1`** + **`key_server.spec`**（PyInstaller **单文件**）生成 **`dist/TimeZoneKeyboard.exe`**；推送到远程的标签 **`v*`** 会触发 **`.github/workflows/release-windows.yml`**，向 **GitHub Release** 上传该 **`.exe`**。若改动影响 `key_server.py` 或静态资源，发版前应本地执行该脚本自检。
+
 
 ---
 

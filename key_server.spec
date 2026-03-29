@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec: Windows folder build (no Python on end-user PC)."""
+"""PyInstaller spec: single Windows .exe (onefile, no Python on target PC)."""
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -7,7 +7,6 @@ block_cipher = None
 
 pynput_datas, pynput_binaries, pynput_hidden = collect_all("pynput")
 
-# websockets hook pulls all submodules (incl. optional router → werkzeug); we only use serve().
 hiddenimports = list(
     dict.fromkeys(list(collect_submodules("pynput")) + pynput_hidden)
 )
@@ -40,28 +39,21 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="TimeZoneKeyboard",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="TimeZoneKeyboard",
 )

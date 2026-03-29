@@ -1,4 +1,4 @@
-# Pushing a version tag (e.g. v1.0.0) builds the Windows bundle and attaches it to a GitHub Release.
+# Pushing a version tag (e.g. v1.0.0) builds TimeZoneKeyboard.exe and attaches it to a GitHub Release.
 
 name: Release Windows build
 
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  windows-zip:
+  windows-exe:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
 
-      - name: Build bundle and zip
+      - name: Build .exe
         env:
           CI: "true"
         run: powershell -ExecutionPolicy Bypass -File scripts/build_windows_release.ps1
@@ -33,7 +33,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/TimeZoneKeyboard-Windows.zip
+          files: dist/TimeZoneKeyboard.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
