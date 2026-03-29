@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Global keyboard capture service for the DOTA / streaming overlay.
+Global keyboard capture service for TimeZoneKeyboard (browser / OBS overlay).
 
 Behavior:
 1) Capture system-wide key events (works when the browser is not focused).
@@ -9,6 +9,7 @@ Behavior:
 3) Serve the overlay static files and project config API on HTTP (http://127.0.0.1:8080).
    On Windows, HTTP_PORT is reclaimed from other listeners at startup unless
    OVERLAY_SKIP_HTTP_PORT_RECLAIM is set to 1/true/yes.
+   Set KEYBOARD_SKIP_BROWSER=1 to skip auto-opening the control panel in the browser.
 
 Design goals ("safe bootstrap"):
 - Self-check: install missing dependencies and restart the process.
@@ -32,6 +33,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -57,11 +59,60 @@ PIP_MIRROR = "https://pypi.tuna.tsinghua.edu.cn/simple"
 REQUIRED_PACKAGES = ("pynput", "websockets")
 QUEUE_POLL_INTERVAL_SEC = 0.01
 
+_browser_open_lock = threading.Lock()
+_browser_opened = False
+_vt_colors_enabled = False
+
 
 def log(message: str) -> None:
     """Print a timestamped line (user-facing / ops; keep messages in Chinese)."""
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] {message}")
+
+
+def _ensure_console_vt_colors() -> None:
+    """Enable ANSI colors in Windows conhost (best-effort)."""
+    global _vt_colors_enabled
+    if _vt_colors_enabled:
+        return
+    _vt_colors_enabled = True
+    if platform.system().lower() != "windows":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+    except Exception:
+        pass
+
+
+def log_emphasis(message: str) -> None:
+    """High-visibility hint line (yellow); for critical usage tips."""
+    _ensure_console_vt_colors()
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    yellow, reset = "\033[1;33m", "\033[0m"
+    print(f"[{ts}] {yellow}{message}{reset}")
+
+
+def _maybe_open_control_panel(url: str) -> None:
+    """Open the control panel in the default browser once (unless opted out)."""
+    global _browser_opened
+    skip = os.environ.get("KEYBOARD_SKIP_BROWSER", "").strip().lower() in ("1", "true", "yes")
+    if skip:
+        return
+    with _browser_open_lock:
+        if _browser_opened:
+            return
+        _browser_opened = True
+    try:
+        webbrowser.open(url)
+        log("已尝试在默认浏览器中打开控制台页面（若未弹出请手动复制上方地址）。")
+    except Exception:
+        log("无法自动打开浏览器，请手动复制上方「控制台页面」地址到浏览器。")
 
 
 # --- Dependency bootstrap (before heavy imports) ---
@@ -125,12 +176,22 @@ def kill_process_using_port(port: int) -> None:
             continue
         match = pid_pattern.search(line)
         if match:
-            pid = match.group(1)
-            if pid != current_pid:
-                pids.add(pid)
+            raw = match.group(1).strip()
+            try:
+                pid_norm = str(int(raw))
+            except ValueError:
+                continue
+            if pid_norm != current_pid:
+                pids.add(pid_norm)
 
-    for pid in pids:
-        subprocess.call(["taskkill", "/F", "/PID", pid])
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    for pid in sorted(pids):
+        subprocess.run(
+            ["taskkill", "/F", "/PID", pid],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
 
 
 def _is_address_in_use(exc: OSError) -> bool:
@@ -304,12 +365,11 @@ async def process_key_events() -> None:
 async def start_server() -> None:
     """Run the WebSocket server until cancelled; retry once if port is busy."""
     log("=" * 50)
-    log("DOTA Keyboard Capture Service")
+    log("TimeZoneKeyboard")
     log("=" * 50)
-    log("功能：捕获全局键盘事件，通过 WebSocket 发送给浏览器")
-    log("解决：浏览器失去焦点时无法捕获按键")
-    log(f"WebSocket 地址: ws://{WS_HOST}:{WS_PORT}")
-    log("按 Ctrl+C 停止服务")
+    log("全局捕获键盘，在浏览器或 OBS 里显示；游戏窗口在前台时也能显示按键。")
+    log(f"本机连接地址（一般无需手动填写）: ws://{WS_HOST}:{WS_PORT}")
+    log("按 Ctrl+C 停止本程序（关闭后浏览器里将不再更新按键）。")
 
     asyncio.create_task(process_key_events())
 
@@ -326,13 +386,17 @@ async def start_server() -> None:
     try:
         await listen_forever()
     except OSError as exc:
-        # Only kill port holders after a failed bind, not on every startup
         if not _is_address_in_use(exc):
             raise
-        log(f"端口 {WS_PORT} 已被占用，尝试结束占用进程后重试一次...")
+        log(f"端口 {WS_PORT} 已被占用，正在尝试释放占用进程并重试一次…")
         kill_process_using_port(WS_PORT)
-        time.sleep(0.5)
-        await listen_forever()
+        time.sleep(0.55)
+        try:
+            await listen_forever()
+        except OSError as exc2:
+            if _is_address_in_use(exc2):
+                log(f"端口 {WS_PORT} 仍被占用：请先关闭另一份本程序或其它占用该端口的软件。")
+            raise
 
 
 def _sanitize_config_basename(name: Any) -> str | None:
@@ -608,7 +672,7 @@ def start_http_server_background() -> None:
             "yes",
         )
         if platform.system().lower() == "windows" and not skip_reclaim:
-            log(f"释放端口 {HTTP_PORT}（避免旧版仅静态页进程占用，确保配置 API 可用）...")
+            log(f"正在检查本地端口 {HTTP_PORT}（若被旧进程占用将自动释放）…")
             kill_process_using_port(HTTP_PORT)
             time.sleep(0.55)
 
@@ -618,17 +682,21 @@ def start_http_server_background() -> None:
                 break
             except OSError as exc:
                 if attempt == 0 and _is_address_in_use(exc):
-                    log(f"端口 {HTTP_PORT} 已被占用，尝试结束占用进程后重试一次...")
+                    log(f"端口 {HTTP_PORT} 已被占用，正在尝试释放占用进程并重试一次…")
                     kill_process_using_port(HTTP_PORT)
                     time.sleep(0.5)
                 else:
-                    log(f"HTTP 服务启动失败（请用浏览器打开本地页与保存配置将不可用）: {exc}")
+                    log(f"网页服务启动失败（无法在浏览器里改键位与保存配置）: {exc}")
                     return
         else:
             return
-        log(f"控制台页面: http://{HTTP_HOST}:{HTTP_PORT}/")
-        log(f"OBS 专用地址: http://{HTTP_HOST}:{HTTP_PORT}/overlay")
-        log(f"配置 API: http://{HTTP_HOST}:{HTTP_PORT}/api/configs")
+        console_url = f"http://{HTTP_HOST}:{HTTP_PORT}/"
+        log(f"控制台页面（日常调键位、保存配置）: {console_url}")
+        log(f"配置列表接口（高级）: http://{HTTP_HOST}:{HTTP_PORT}/api/configs")
+        log_emphasis(
+            f"请优先使用上方控制台页面。OBS 浏览器源请复制页面内「OBS」卡片里的完整链接，不要自己拼 /overlay 路径。"
+        )
+        _maybe_open_control_panel(console_url)
         httpd.serve_forever()
 
     threading.Thread(target=run, name="http-overlay", daemon=True).start()
@@ -660,7 +728,7 @@ def main() -> None:
     keyboard_thread.start()
 
     start_http_server_background()
-    time.sleep(0.15)
+    time.sleep(0.45)
 
     try:
         asyncio.run(start_server())
