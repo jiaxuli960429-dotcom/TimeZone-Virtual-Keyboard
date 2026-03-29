@@ -7,7 +7,7 @@
 
 1. `DOMContentLoaded` 后初始化画布与事件监听。
 2. 尝试加载内置配置 `configs/default.json`。
-3. 读取浏览器缓存配置（`localStorage`）并校验版本。
+3. 读取浏览器缓存配置（`localStorage`），要求 JSON 含 `keys` 数组（旧版仅 `version` 的缓存会被丢弃）。
 4. 刷新按键列表并触发首帧渲染。
 5. 建立 WebSocket 连接（`ws://localhost:8765`）。
 6. 刷新项目内配置下拉列表（`/api/configs`）。
@@ -24,16 +24,17 @@
 
 ## 配置行为
 
-- 导出/保存配置结构：
-  - `version: 5`
+- 导出/保存配置结构（持久化层）：
   - `keys`、`config`、`bgImage`、`bgPosition`、`bgScale`、`bgKeyOpacity`、`bgNonKeyOpacity`
+  - 可选 `meta`：`author`、`updatedAt`（保存时刷新 `updatedAt`；脏状态指纹忽略 `meta`）
+- 不再写入顶层 `version`。
+- 载入方案时先重置 `CONFIG` 再合并文件内 `config`，避免切换方案残留字段。
 - 内置默认配置路径：`configs/default.json`
 - 浏览器缓存 key：`dotaKeyboardConfig`
-- 本地缓存最小可接受版本：`5`
 
 ## 接口行为
 
-- `GET /api/configs`：获取项目内可用配置名称。
+- `GET /api/configs`：返回 `names` 与 `items`（每项含 `name`、`keyCount`、`author`、`updatedAt`、`fileModified` 等摘要）。
 - `POST /api/config/save`：保存到 `configs/<name>.json`。
 - `GET /api/config?name=...`：读取指定配置。
 - `DELETE /api/config?name=...`：删除指定配置。

@@ -22,12 +22,12 @@ if errorlevel 1 (
 echo [1/2] Python detected
 echo.
 
-:: WebSocket + HTTP (static page + configs API on port 8080)
+:: WebSocket + HTTP - static page and configs API on port 8080
 echo [2/2] Starting keyboard service and local web server...
 start "Keyboard + HTTP" pythonw key_server.py
 
 timeout /t 2 /nobreak >nul
-echo      Service started (WebSocket 8765, HTTP 8080)
+echo      Service started - WebSocket 8765, HTTP 8080
 echo.
 
 :: Open browser
@@ -41,18 +41,19 @@ echo ========================================
 echo.
 echo Usage:
 echo 1. Control panel: http://localhost:8080
-echo 2. OBS Browser source URL: http://localhost:8080/overlay
-echo 3. Recommended size: 1200x400
-echo 4. Check "Use custom frame rate": 60 FPS
+echo 2. OBS: copy URL from OBS browser source box - must include /overlay?config=
+echo 3. Canvas size: match OBS browser W x H to control panel top bar
+echo 4. OBS browser source: enable custom FPS e.g. 60
+echo 5. Full guide: 使用说明.md in this folder
 echo.
 echo Features:
-echo - Global keyboard capture: works even when browser is not focused
-echo - Press F2 to show/hide settings
-echo - Config profiles saved under configs\ folder in this project
+echo - Global keyboard capture: works when browser not focused
+echo - Press F2 to show or hide settings
+echo - Config profiles in configs folder
 echo.
 echo Note:
-echo - First run will auto-install dependencies (needs internet)
-echo - If keyboard service not working, run: python key_server.py
+echo - First run may auto-install dependencies - needs internet
+echo - If service fails: run python key_server.py in terminal to see errors
 echo.
-echo Press any key to close this window (services will continue)
+echo Press any key to close this window - services keep running
 pause >nul

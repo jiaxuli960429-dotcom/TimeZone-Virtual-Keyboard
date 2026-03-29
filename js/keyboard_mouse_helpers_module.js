@@ -40,16 +40,15 @@
         const onRight = Math.abs(x - rightEdge) <= threshold;
         const onTop = Math.abs(y - topEdge) <= threshold;
         const onBottom = Math.abs(y - bottomEdge) <= threshold;
-        const insideKey = x >= leftEdge && x <= rightEdge && y >= topEdge && y <= bottomEdge;
-
         if (onTop && onLeft) return 'nw';
         if (onTop && onRight) return 'ne';
         if (onBottom && onLeft) return 'sw';
         if (onBottom && onRight) return 'se';
-        if (onTop && insideKey) return 'n';
-        if (onBottom && insideKey) return 's';
-        if (onLeft && insideKey) return 'w';
-        if (onRight && insideKey) return 'e';
+        /* 角已处理；条带区由外层 inHorizontalRange/inVerticalRange 限定，勿再要求点在键矩形内 */
+        if (onTop) return 'n';
+        if (onBottom) return 's';
+        if (onLeft) return 'w';
+        if (onRight) return 'e';
         return null;
     }
 
@@ -68,12 +67,11 @@
         if (!canvas) return;
 
         if (position) {
-            canvas.style.cursor = cursorMap[position];
-            canvas.className = `cursor-resize-${position}`;
+            canvas.style.cursor = cursorMap[position] || 'default';
         } else {
             canvas.style.cursor = 'default';
-            canvas.className = '';
         }
+        canvas.className = '';
     }
 
     globalObj.KeyboardMouseHelpersModule = {

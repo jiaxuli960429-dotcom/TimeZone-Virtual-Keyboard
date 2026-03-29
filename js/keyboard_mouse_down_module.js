@@ -22,11 +22,15 @@
         }
 
         const keys = ctx.getKeys();
+        const editingKeyNow = ctx.getEditingKey();
         let clickedOnKey = false;
         let clickedKey = null;
 
         for (let i = keys.length - 1; i >= 0; i--) {
             const key = keys[i];
+            if (editingKeyNow && key !== editingKeyNow) {
+                continue;
+            }
             const w = key.width || ctx.CONFIG.keySize;
             const h = key.height || ctx.CONFIG.keySize;
 
@@ -89,6 +93,24 @@
 
         const editingKey = ctx.getEditingKey();
         if (editingKey) {
+            const th = ctx.RESIZE_EDGE_THRESHOLD;
+            for (let j = keys.length - 1; j >= 0; j--) {
+                const k = keys[j];
+                if (k === editingKey) continue;
+                const kw = k.width || ctx.CONFIG.keySize;
+                const kh = k.height || ctx.CONFIG.keySize;
+                if (
+                    x >= k.x - th &&
+                    x <= k.x + kw + th &&
+                    y >= k.y - th &&
+                    y <= k.y + kh + th
+                ) {
+                    ctx.setSelectedKey(editingKey);
+                    ctx.updateKeyList();
+                    ctx.invalidateCanvas();
+                    return;
+                }
+            }
             ctx.setSelectedKey(editingKey);
         } else {
             ctx.setSelectedKey(null);

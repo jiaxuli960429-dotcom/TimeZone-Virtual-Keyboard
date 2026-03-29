@@ -119,18 +119,35 @@
         let found = false;
         let hoveredKey = null;
         const keys = ctx.getKeys();
+        const editingKeyNow = ctx.getEditingKey();
+        const th = ctx.RESIZE_EDGE_THRESHOLD;
+
         for (let i = keys.length - 1; i >= 0; i--) {
             const key = keys[i];
+            if (editingKeyNow && key !== editingKeyNow) {
+                continue;
+            }
             const w = key.width || ctx.CONFIG.keySize;
             const h = key.height || ctx.CONFIG.keySize;
             const inRange =
-                x >= key.x - ctx.RESIZE_EDGE_THRESHOLD &&
-                x <= key.x + w + ctx.RESIZE_EDGE_THRESHOLD &&
-                y >= key.y - ctx.RESIZE_EDGE_THRESHOLD &&
-                y <= key.y + h + ctx.RESIZE_EDGE_THRESHOLD;
+                x >= key.x - th && x <= key.x + w + th && y >= key.y - th && y <= key.y + h + th;
             if (inRange) {
                 hoveredKey = key;
                 break;
+            }
+        }
+
+        if (!hoveredKey && editingKeyNow) {
+            for (let i = keys.length - 1; i >= 0; i--) {
+                const key = keys[i];
+                if (key === editingKeyNow) continue;
+                const w = key.width || ctx.CONFIG.keySize;
+                const h = key.height || ctx.CONFIG.keySize;
+                if (x >= key.x - th && x <= key.x + w + th && y >= key.y - th && y <= key.y + h + th) {
+                    canvas.style.cursor = 'default';
+                    canvas.className = '';
+                    return;
+                }
             }
         }
 
@@ -149,13 +166,14 @@
                     const h = hoveredKey.height || ctx.CONFIG.keySize;
                     if (x >= hoveredKey.x && x <= hoveredKey.x + w && y >= hoveredKey.y && y <= hoveredKey.y + h) {
                         canvas.style.cursor = 'move';
-                        canvas.className = 'cursor-move';
+                        canvas.className = '';
                         found = true;
                     }
                 }
             }
         } else if (ctx.getBgImage()) {
             canvas.style.cursor = 'move';
+            canvas.className = '';
             found = true;
         }
 

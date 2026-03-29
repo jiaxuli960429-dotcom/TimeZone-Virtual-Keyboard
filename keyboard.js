@@ -405,6 +405,7 @@ function mouseMoveCtx() {
         getEdgePosition,
         updateCursor,
         getKeys: () => keys,
+        getEditingKey: () => editingKey,
         getBgImage: () => bgImage,
         getDragCandidateKey: () => dragCandidateKey,
         setDragCandidateKey: (value) => {
