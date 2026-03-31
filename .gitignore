@@ -28,6 +28,7 @@ __pycache__/
 .venv/
 venv/
 .env
+agent-test.env
 *.egg-info/
 *.egg
 

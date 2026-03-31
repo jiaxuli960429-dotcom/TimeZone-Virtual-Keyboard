@@ -16,7 +16,7 @@
                 opts.onFallbackEmpty();
             }
             (opts.logger || console).warn(
-                '未加载内置布局 configs/默认87键.json（请用 http://localhost:8080 打开页面；若用 file:// 打开则无内置布局）。将使用空按键列表。',
+                '未加载内置布局 configs/默认87键.json（请确认页面由在线服务提供；若用 file:// 打开则无内置布局）。将使用空按键列表。',
                 e
             );
         }
@@ -167,8 +167,8 @@
         reader.readAsText(file);
     }
 
-    /** 无 query 时叠加层会尝试加载的项目内文件名（configs/obs.json）。 */
-    const OVERLAY_FALLBACK_PROFILE_NAME = 'obs';
+    /** 无 query 时叠加层会尝试加载的项目内文件名（configs/默认87键.json）。 */
+    const OVERLAY_FALLBACK_PROFILE_NAME = '默认87键';
 
     async function loadProjectConfigByName(options) {
         const opts = options || {};
@@ -189,7 +189,7 @@
 
     /**
      * OBS / 独立浏览器叠加层：不依赖 localStorage。
-     * 顺序：先 URL ?config=名称，再尝试 configs/obs.json。
+     * 顺序：先 URL ?config=名称，再尝试 configs/默认87键.json。
      */
     async function loadOverlayServerProfile(options) {
         const opts = options || {};
@@ -221,7 +221,7 @@
         logger.log(
             '叠加层未找到可加载的项目配置（已尝试: ' +
                 names.join(', ') +
-                '）。当前为内置模板 configs/默认87键.json。请在控制台「保存到项目」为 obs 或所选名称，并复制带 ?config= 的 OBS 地址。'
+                '）。当前为内置模板 configs/默认87键.json。若要使用自定义方案，请在控制台保存对应名称，并复制带 ?config= 的 OBS 地址。'
         );
     }
 

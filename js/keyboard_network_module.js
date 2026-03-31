@@ -1,24 +1,210 @@
 (function initKeyboardNetworkModule(globalObj) {
     'use strict';
+    const AUTH_TOKEN_STORAGE_KEY = 'tzkAuthToken';
+
+    function getAuthToken() {
+        try {
+            return (localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function setAuthToken(token) {
+        try {
+            localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, String(token || ''));
+        } catch (_) {
+            /* ignore */
+        }
+    }
+
+    function clearAuthToken() {
+        try {
+            localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        } catch (_) {
+            /* ignore */
+        }
+    }
+
+    function buildAuthHeaders(extra) {
+        const headers = Object.assign({}, extra || {});
+        const token = getAuthToken();
+        if (token) headers.Authorization = 'Bearer ' + token;
+        return headers;
+    }
+
+    async function authRegister(username, password) {
+        const r = await fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'register failed');
+        return data;
+    }
+
+    async function authLogin(username, password) {
+        const r = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'login failed');
+        if (data.token) setAuthToken(data.token);
+        return data;
+    }
+
+    async function authMe() {
+        const r = await fetch('/api/v1/auth/me', {
+            headers: buildAuthHeaders()
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        return data && data.user ? data.user : null;
+    }
+
+    async function authLogout() {
+        try {
+            await fetch('/api/v1/auth/logout', {
+                method: 'POST',
+                headers: buildAuthHeaders()
+            });
+        } catch (_) {
+            /* ignore */
+        } finally {
+            clearAuthToken();
+        }
+        return true;
+    }
+
+    async function listMyConfigs() {
+        const r = await fetch('/api/v1/my/configs', {
+            headers: buildAuthHeaders()
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        return Array.isArray(data.items) ? data.items : [];
+    }
+
+    async function listWorkshopConfigs() {
+        const r = await fetch('/api/v1/workshop/configs');
+        if (!r.ok) throw new Error('workshop list failed');
+        const data = await r.json();
+        return Array.isArray(data.items) ? data.items : [];
+    }
+
+    async function publishConfigById(configId) {
+        const r = await fetch('/api/v1/configs/' + encodeURIComponent(configId) + '/publish', {
+            method: 'POST',
+            headers: buildAuthHeaders()
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'publish failed');
+        return data;
+    }
+
+    async function forkConfigById(configId, name) {
+        const r = await fetch('/api/v1/configs/' + encodeURIComponent(configId) + '/fork', {
+            method: 'POST',
+            headers: buildAuthHeaders({ 'Content-Type': 'application/json; charset=utf-8' }),
+            body: JSON.stringify({ name })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'fork failed');
+        return data;
+    }
+
+    async function getConfigById(configId) {
+        const r = await fetch('/api/v1/configs/' + encodeURIComponent(configId), {
+            headers: buildAuthHeaders()
+        });
+        if (!r.ok) throw new Error('load config failed');
+        const data = await r.json();
+        return data && data.content ? data.content : null;
+    }
+
+    async function deleteConfigById(configId) {
+        const r = await fetch('/api/v1/configs/' + encodeURIComponent(configId), {
+            method: 'DELETE',
+            headers: buildAuthHeaders()
+        });
+        if (!r.ok) {
+            let data = {};
+            try {
+                data = await r.json();
+            } catch (_) {
+                data = {};
+            }
+            throw new Error(data.detail || 'delete failed');
+        }
+        return true;
+    }
+    const LATENCY_LOG_INTERVAL_MS = 2000;
+    let latencyWindowCount = 0;
+    let latencyWindowSum = 0;
+    let latencyWindowMax = 0;
+    let latencyLastLogAt = 0;
+
+    function maybeLogLatency(tsMs) {
+        if (typeof tsMs !== 'number' || !isFinite(tsMs) || tsMs <= 0) return;
+        const now = Date.now();
+        const lag = now - tsMs;
+        if (lag < 0 || lag > 60000) return;
+        latencyWindowCount += 1;
+        latencyWindowSum += lag;
+        if (lag > latencyWindowMax) latencyWindowMax = lag;
+        if (now - latencyLastLogAt < LATENCY_LOG_INTERVAL_MS) return;
+        const avg = latencyWindowCount ? latencyWindowSum / latencyWindowCount : 0;
+        console.log(
+            '[overlay] latency avg=' +
+                avg.toFixed(1) +
+                'ms max=' +
+                latencyWindowMax.toFixed(1) +
+                'ms samples=' +
+                latencyWindowCount
+        );
+        latencyWindowCount = 0;
+        latencyWindowSum = 0;
+        latencyWindowMax = 0;
+        latencyLastLogAt = now;
+    }
 
     async function refreshSavedConfigSelect(options) {
         const opts = options || {};
         const sel = opts.selectEl;
         if (!sel) return;
         try {
-            const r = await fetch('/api/configs');
-            if (!r.ok) throw new Error('bad status');
-            const data = await r.json();
-            const names = data.names || [];
-            const items = Array.isArray(data.items)
-                ? data.items
-                : names.map((name) => ({
-                      name,
-                      keyCount: 0,
-                      author: '',
-                      updatedAt: '',
-                      fileModified: ''
-                  }));
+            let names = [];
+            let items = [];
+            const mine = await listMyConfigs();
+            if (Array.isArray(mine)) {
+                items = mine.map((x) => ({
+                    id: x.id,
+                    name: x.name,
+                    keyCount: 0,
+                    author: '',
+                    updatedAt: x.updatedAt || '',
+                    fileModified: '',
+                    visibility: x.visibility || 'private'
+                }));
+                names = items.map((x) => x.name);
+            } else {
+                const r = await fetch('/api/configs');
+                if (!r.ok) throw new Error('bad status');
+                const data = await r.json();
+                names = data.names || [];
+                items = Array.isArray(data.items)
+                    ? data.items
+                    : names.map((name) => ({
+                          name,
+                          keyCount: 0,
+                          author: '',
+                          updatedAt: '',
+                          fileModified: ''
+                      }));
+            }
             sel.innerHTML = '';
             const opt0 = document.createElement('option');
             opt0.value = '';
@@ -35,7 +221,7 @@
             }
             return names;
         } catch (e) {
-            console.warn('配置列表不可用（请用 start-keyboard.bat 启动，并以 http://localhost:8080 打开）', e);
+            console.warn('配置列表不可用（请确认当前页面由在线服务器提供，而不是 file:// 本地文件）', e);
             sel.innerHTML = '';
             const opt0 = document.createElement('option');
             opt0.value = '';
@@ -60,12 +246,30 @@
         const config = opts.getCurrentConfig();
         const dataStr = JSON.stringify(config);
         try {
-            const url = new URL('/api/config/save', window.location.origin);
-            const r = await fetch(url.toString(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json; charset=utf-8' },
-                body: JSON.stringify({ name, config })
-            });
+            // Prefer new cloud API, then fallback to legacy endpoint.
+            let r = null;
+            const token = getAuthToken();
+            if (token) {
+                r = await fetch('/api/v1/configs', {
+                    method: 'POST',
+                    headers: buildAuthHeaders({ 'Content-Type': 'application/json; charset=utf-8' }),
+                    body: JSON.stringify({ name, content: config, visibility: 'private' })
+                });
+            } else {
+                r = await fetch('/api/configs/' + encodeURIComponent(name), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify(config)
+                });
+            }
+            if (r.status === 404) {
+                const url = new URL('/api/config/save', window.location.origin);
+                r = await fetch(url.toString(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify({ name, config })
+                });
+            }
             const text = await r.text();
             let data = {};
             try {
@@ -77,9 +281,8 @@
                 if (r.status === 404) {
                     alert(
                         '保存失败 (HTTP 404)：当前地址上的服务不认识 /api/config/save。\n\n' +
-                            '常见原因：8080 端口仍是旧的「仅静态文件」服务（例如以前 bat 起的 PowerShell）。\n' +
-                            '请结束占用 8080 的进程后，只用新版 start-keyboard.bat 启动（由 key_server 同时提供网页与保存接口），\n' +
-                            '并用 http://localhost:8080 打开本页（不要用本地磁盘 file:// 打开）。'
+                            '请确认当前页面来自在线服务，并且后端 API 已部署；\n' +
+                            '不要用本地磁盘 file:// 直接打开 html。'
                     );
                     return false;
                 }
@@ -97,7 +300,7 @@
             return true;
         } catch (err) {
             console.error(err);
-            alert('保存失败（请确认已用 http://localhost:8080 打开页面，且 key_server 正在运行）');
+            alert('保存失败（请确认在线服务可用，且页面不是用 file:// 打开）');
             return false;
         }
     }
@@ -112,12 +315,22 @@
             return false;
         }
         try {
-            const r = await fetch('/api/config?name=' + encodeURIComponent(name));
-            if (!r.ok) {
+            // Prefer new cloud API, then fallback to legacy endpoint.
+            let r = await fetch('/api/configs/' + encodeURIComponent(name));
+            let config = null;
+            if (r.ok) {
+                const data = await r.json();
+                config = data && data.config ? data.config : null;
+            } else if (r.status === 404) {
+                r = await fetch('/api/config?name=' + encodeURIComponent(name));
+                if (r.ok) {
+                    config = await r.json();
+                }
+            }
+            if (!config) {
                 alert('加载失败 (HTTP ' + r.status + ')');
                 return false;
             }
-            const config = await r.json();
             opts.applyConfig(config);
             localStorage.setItem('dotaKeyboardConfig', JSON.stringify(config));
             if (!suppressSuccessAlert) {
@@ -126,7 +339,7 @@
             return config;
         } catch (e) {
             console.error(e);
-            alert('加载失败（请确认本机服务已启动）');
+            alert('加载失败（请确认在线服务可用）');
             return false;
         }
     }
@@ -141,7 +354,11 @@
         }
         if (!confirm('确定删除项目内配置：configs/' + name + '.json ?')) return false;
         try {
-            const r = await fetch('/api/config?name=' + encodeURIComponent(name), { method: 'DELETE' });
+            // Prefer new cloud API, then fallback to legacy endpoint.
+            let r = await fetch('/api/configs/' + encodeURIComponent(name), { method: 'DELETE' });
+            if (r.status === 404) {
+                r = await fetch('/api/config?name=' + encodeURIComponent(name), { method: 'DELETE' });
+            }
             let data = {};
             try {
                 data = await r.json();
@@ -176,13 +393,16 @@
             return true;
         } catch (e) {
             console.error(e);
-            alert('打开配置文件夹失败（请确认本机服务已启动）');
+            alert('打开配置文件夹失败（在线模式下此功能通常不可用）');
             return false;
         }
     }
 
     function handleWebSocketMessage(data, pressedKeys, invalidateCanvas) {
         if (!pressedKeys) return;
+        if (data.type === 'key') {
+            maybeLogLatency(typeof data.ts === 'number' ? data.ts : 0);
+        }
         if (data.type === 'key') {
             if (data.pressed) {
                 pressedKeys.add(data.code);
@@ -222,10 +442,10 @@
         statusDiv.classList.remove('connected', 'disconnected');
 
         if (connected) {
-            statusDiv.textContent = '全局按键捕获：已连接';
+            statusDiv.textContent = '实时通道：已连接';
             statusDiv.classList.add('connected');
         } else {
-            statusDiv.textContent = '全局按键捕获：未连接（请运行 key_server.py）';
+            statusDiv.textContent = '实时通道：未连接（请检查网络或服务器）';
             statusDiv.classList.add('disconnected');
         }
 
@@ -236,16 +456,48 @@
         const opts = options || {};
         const state = opts.state;
         const reconnectDelayMs = opts.reconnectDelayMs || 3000;
+        const channel = (opts.channel || 'demo').trim();
+        const role = (opts.role || 'overlay').trim();
+        const urls = Array.isArray(opts.urls) && opts.urls.length ? opts.urls.slice() : [opts.url];
+        let nextUrlIndex = 0;
 
-        try {
-            state.ws = new WebSocket(opts.url || 'ws://localhost:8765');
+        function pickNextUrl() {
+            const u = urls[nextUrlIndex % urls.length];
+            nextUrlIndex += 1;
+            return u;
+        }
+
+        function tryConnect() {
+            const targetUrl = pickNextUrl();
+            try {
+                state.ws = new WebSocket(targetUrl);
+            } catch (err) {
+                console.warn('WebSocket connect init failed:', targetUrl, err);
+                state.wsConnected = false;
+                showConnectionStatus(false, state);
+                if (state.wsReconnectTimerId !== null) {
+                    clearTimeout(state.wsReconnectTimerId);
+                }
+                state.wsReconnectTimerId = setTimeout(() => {
+                    state.wsReconnectTimerId = null;
+                    tryConnect();
+                }, reconnectDelayMs);
+                return;
+            }
 
             state.ws.onopen = () => {
                 if (state.wsReconnectTimerId !== null) {
                     clearTimeout(state.wsReconnectTimerId);
                     state.wsReconnectTimerId = null;
                 }
-                console.log('WebSocket Connected - Global key capture enabled');
+                state.ws.send(
+                    JSON.stringify({
+                        type: 'hello',
+                        role,
+                        channel
+                    })
+                );
+                console.log('WebSocket connected:', targetUrl);
                 state.wsConnected = true;
                 state.useWebSocket = true;
                 showConnectionStatus(true, state);
@@ -254,6 +506,7 @@
             state.ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    if (data.type === 'hello_ack' || data.type === 'pong') return;
                     handleWebSocketMessage(data, opts.pressedKeys, opts.invalidateCanvas);
                 } catch (e) {
                     console.error('WebSocket message parse error:', e);
@@ -261,7 +514,7 @@
             };
 
             state.ws.onclose = () => {
-                console.log('WebSocket disconnected');
+                console.log('WebSocket disconnected:', targetUrl);
                 state.wsConnected = false;
                 showConnectionStatus(false, state);
                 if (state.wsReconnectTimerId !== null) {
@@ -269,22 +522,34 @@
                 }
                 state.wsReconnectTimerId = setTimeout(() => {
                     state.wsReconnectTimerId = null;
-                    connectWebSocket(options);
+                    tryConnect();
                 }, reconnectDelayMs);
             };
 
             state.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.error('WebSocket error:', targetUrl, error);
                 state.wsConnected = false;
                 showConnectionStatus(false, state);
             };
-        } catch (e) {
-            console.error('WebSocket connection failed:', e);
-            showConnectionStatus(false, state);
         }
+
+        tryConnect();
     }
 
     globalObj.KeyboardNetworkModule = {
+        getAuthToken,
+        setAuthToken,
+        clearAuthToken,
+        authRegister,
+        authLogin,
+        authMe,
+        authLogout,
+        listMyConfigs,
+        listWorkshopConfigs,
+        publishConfigById,
+        forkConfigById,
+        getConfigById,
+        deleteConfigById,
         refreshSavedConfigSelect,
         saveConfigToProject,
         loadSelectedProjectConfig,

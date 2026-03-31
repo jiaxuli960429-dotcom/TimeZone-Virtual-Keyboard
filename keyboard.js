@@ -75,6 +75,7 @@ const LAST_ACTIVE_PROFILE_STORAGE_KEY = 'vkLastActiveProfile';
 let savedConfigNamesCache = [];
 /** 与列表 API 同步的摘要行，用于本地方案卡片展示（作者 / 日期 / 键位数）。 */
 let savedConfigSummariesCache = [];
+let currentAuthUser = null;
 /** 当前文件中的 meta（保存时写回）；author 可由用户以后扩展编辑入口。 */
 let profileMeta = { author: '', updatedAt: '' };
 let currentConfigName = 'obs';
@@ -863,15 +864,29 @@ async function loadProjectConfigByName(name, options) {
         const goOn = await promptSaveIfDirty('切换配置');
         if (!goOn) return false;
     }
-    const sel = byId('saved-config-select');
-    if (!sel) return false;
-    sel.value = safeName;
-    const loaded = await networkModule.loadSelectedProjectConfig({
-        selectEl: sel,
-        applyConfig,
-        suppressSuccessAlert: true
-    });
+    const row = savedConfigSummariesCache.find((x) => x.name === safeName) || null;
+    let loaded = null;
+    let alreadyApplied = false;
+    if (row && row.id) {
+        try {
+            loaded = await networkModule.getConfigById(row.id);
+        } catch (_) {
+            loaded = null;
+        }
+    }
+    if (!loaded) {
+        const sel = byId('saved-config-select');
+        if (!sel) return false;
+        sel.value = safeName;
+        loaded = await networkModule.loadSelectedProjectConfig({
+            selectEl: sel,
+            applyConfig,
+            suppressSuccessAlert: true
+        });
+        alreadyApplied = !!loaded;
+    }
     if (!loaded) return false;
+    if (!alreadyApplied) applyConfig(loaded);
 
     currentConfigName = safeName;
     try {
@@ -893,6 +908,19 @@ async function loadProjectConfigByName(name, options) {
 async function deleteProjectConfigByName(name) {
     const safeName = String(name || '').trim();
     if (!safeName) return false;
+    const row = savedConfigSummariesCache.find((x) => x.name === safeName) || null;
+    if (row && row.id) {
+        if (!confirm('确定删除配置：' + safeName + ' ?')) return false;
+        try {
+            await networkModule.deleteConfigById(row.id);
+            await refreshSavedConfigSelect();
+            setObsFlowStatus('已删除配置：' + safeName, 'success');
+            return true;
+        } catch (e) {
+            alert('删除失败：' + (e && e.message ? e.message : 'unknown error'));
+            return false;
+        }
+    }
     const sel = byId('saved-config-select');
     if (!sel) return false;
     sel.value = safeName;
@@ -911,19 +939,23 @@ function normalizeConfigSummaryEntries(items) {
         .map((entry) => {
             if (typeof entry === 'string') {
                 return {
+                    id: '',
                     name: entry,
                     keyCount: 0,
                     author: '',
                     updatedAt: '',
-                    fileModified: ''
+                    fileModified: '',
+                    visibility: ''
                 };
             }
             return {
+                id: String(entry.id || ''),
                 name: String(entry.name || ''),
                 keyCount: Number(entry.keyCount) || 0,
                 author: String(entry.author || ''),
                 updatedAt: String(entry.updatedAt || ''),
-                fileModified: String(entry.fileModified || '')
+                fileModified: String(entry.fileModified || ''),
+                visibility: String(entry.visibility || '')
             };
         })
         .filter((x) => x.name);
@@ -991,7 +1023,8 @@ function renderSavedConfigRepoList(items) {
         meta.className = 'config-repo-meta';
         const authorDisp = row.author ? row.author : '—';
         const dateDisp = formatSchemeListDate(row.updatedAt, row.fileModified);
-        meta.textContent = `作者：${authorDisp} · 更新：${dateDisp} · ${row.keyCount} 键`;
+        const visTag = row.visibility ? ` · ${row.visibility}` : '';
+        meta.textContent = `作者：${authorDisp} · 更新：${dateDisp} · ${row.keyCount} 键${visTag}`;
         main.appendChild(meta);
 
         item.appendChild(main);
@@ -1010,8 +1043,169 @@ function renderSavedConfigRepoList(items) {
         });
         actions.appendChild(delBtn);
 
+        if (row.id) {
+            const publishBtn = document.createElement('button');
+            publishBtn.type = 'button';
+            publishBtn.className = 'btn';
+            publishBtn.textContent = '发布';
+            publishBtn.title = '发布到创意工坊';
+            publishBtn.addEventListener('click', async () => {
+                await publishCurrentConfigByName(name);
+            });
+            actions.appendChild(publishBtn);
+        }
+
         item.appendChild(actions);
         list.appendChild(item);
+    });
+}
+
+function updateAuthStatusUi() {
+    const el = byId('auth-user-status');
+    if (!el) return;
+    if (currentAuthUser && currentAuthUser.username) {
+        el.textContent = '已登录：' + currentAuthUser.username;
+        return;
+    }
+    el.textContent = '未登录（将使用兼容旧接口）';
+}
+
+async function refreshAuthStatus() {
+    currentAuthUser = await networkModule.authMe();
+    updateAuthStatusUi();
+    return currentAuthUser;
+}
+
+async function promptRegister() {
+    const username = String(prompt('注册用户名') || '').trim();
+    if (!username) return false;
+    const password = String(prompt('注册密码（占位版）') || '');
+    if (!password) return false;
+    try {
+        await networkModule.authRegister(username, password);
+        await networkModule.authLogin(username, password);
+        await refreshAuthStatus();
+        await refreshSavedConfigSelect();
+        setObsFlowStatus('注册并登录成功。', 'success');
+        return true;
+    } catch (e) {
+        alert('注册失败：' + (e && e.message ? e.message : 'unknown error'));
+        return false;
+    }
+}
+
+async function promptLogin() {
+    const username = String(prompt('登录用户名') || '').trim();
+    if (!username) return false;
+    const password = String(prompt('登录密码') || '');
+    if (!password) return false;
+    try {
+        await networkModule.authLogin(username, password);
+        await refreshAuthStatus();
+        await refreshSavedConfigSelect();
+        setObsFlowStatus('登录成功。', 'success');
+        return true;
+    } catch (e) {
+        alert('登录失败：' + (e && e.message ? e.message : 'unknown error'));
+        return false;
+    }
+}
+
+async function doLogout() {
+    await networkModule.authLogout();
+    currentAuthUser = null;
+    updateAuthStatusUi();
+    await refreshSavedConfigSelect();
+    setObsFlowStatus('已退出登录。', 'success');
+    return true;
+}
+
+async function publishCurrentConfigByName(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return false;
+    const row = savedConfigSummariesCache.find((x) => x.name === safeName);
+    if (!row || !row.id) {
+        alert('请先登录并保存一次该配置，再发布。');
+        return false;
+    }
+    try {
+        await networkModule.publishConfigById(row.id);
+        await refreshSavedConfigSelect();
+        setObsFlowStatus('发布成功：' + safeName, 'success');
+        return true;
+    } catch (e) {
+        alert('发布失败：' + (e && e.message ? e.message : 'unknown error'));
+        return false;
+    }
+}
+
+async function publishCurrentConfig() {
+    return publishCurrentConfigByName(getCurrentConfigName());
+}
+
+async function showWorkshopList() {
+    try {
+        const items = await networkModule.listWorkshopConfigs();
+        renderWorkshopPanel(items);
+        return true;
+    } catch (e) {
+        alert('读取创意工坊失败：' + (e && e.message ? e.message : 'unknown error'));
+        return false;
+    }
+}
+
+function renderWorkshopPanel(items) {
+    const listEl = byId('workshop-list');
+    const countEl = byId('workshop-count');
+    if (!listEl) return;
+    const rows = Array.isArray(items) ? items.slice(0, 30) : [];
+    if (countEl) countEl.textContent = rows.length + ' 项';
+    listEl.innerHTML = '';
+    if (!rows.length) {
+        const empty = document.createElement('div');
+        empty.className = 'workshop-empty';
+        empty.textContent = '暂无公开配置。';
+        listEl.appendChild(empty);
+        return;
+    }
+    rows.forEach((row) => {
+        const item = document.createElement('div');
+        item.className = 'workshop-item';
+
+        const main = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'workshop-item-name';
+        name.textContent = String(row.name || 'unnamed');
+        main.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'workshop-item-meta';
+        const owner = String(row.owner || 'unknown');
+        const likes = Number(row.likes || 0);
+        meta.textContent = `作者：${owner} · 👍 ${likes}`;
+        main.appendChild(meta);
+        item.appendChild(main);
+
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'btn';
+        action.textContent = 'Fork 到我的';
+        action.addEventListener('click', async () => {
+            const base = String(row.name || 'fork').trim() || 'fork';
+            const suggest = base + '-fork';
+            const targetName = String(prompt('Fork 后保存名称', suggest) || '').trim();
+            if (!targetName) return;
+            try {
+                await networkModule.forkConfigById(row.id, targetName);
+                await refreshSavedConfigSelect();
+                setObsFlowStatus('Fork 成功：' + targetName, 'success');
+            } catch (e) {
+                alert('Fork 失败：' + (e && e.message ? e.message : 'unknown error'));
+            }
+        });
+        item.appendChild(action);
+
+        listEl.appendChild(item);
     });
 }
 
@@ -1371,9 +1565,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     connectWebSocket();
 
+    await refreshAuthStatus();
     await refreshSavedConfigSelect();
 
     if (IS_OVERLAY_MODE) {
+        // Online overlay mode: always render builtin template first,
+        // then override with server profile if available.
+        await loadBuiltinDefaultConfig();
         await configModule.loadOverlayServerProfile({ applyConfig });
     } else {
         const names = savedConfigNamesCache.slice();
@@ -1412,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Load repo default layout from configs/默认87键.json (requires same-origin HTTP, e.g. localhost:8080).
+ * Load repo default layout from configs/默认87键.json (requires same-origin HTTP).
  */
 async function loadBuiltinDefaultConfig() {
     return configModule.loadBuiltinDefaultConfig({
@@ -2317,7 +2515,7 @@ function showConfigLocation() {
     const message = `配置保存说明：
 
 1. 推荐操作流程（最简单）
-   - 使用 start-keyboard.bat 启动后，用 http://localhost:8080 打开页面
+   - 通过在线服务地址打开页面（不要用 file://）
    - 会自动载入你上次用的方案；没有的话会试「默认87键」，再没有则用内置模板
    - 在「配置」里点列表名字切换 → 到「外观」「键位」里改 → 回「配置」点「保存」
    - 想改名用「另存为」；当前名字看最上面 OBS 区域
@@ -2349,8 +2547,15 @@ function showConfigLocation() {
 // ==================== WebSocket 功能 ====================
 
 function connectWebSocket() {
+    const qs = new URLSearchParams(window.location.search || '');
+    const channel = (qs.get('channel') || qs.get('config') || 'demo').trim();
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const cloudWsUrl = wsProtocol + '//' + window.location.host + '/ws/realtime';
+    const localWsUrl = 'ws://127.0.0.1:8766/ws/local';
     networkModule.connectWebSocket({
-        url: 'ws://localhost:8765',
+        urls: [localWsUrl, cloudWsUrl],
+        role: 'overlay',
+        channel,
         state: {
             get ws() {
                 return ws;
