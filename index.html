@@ -189,6 +189,35 @@
                 0 0 0 0.5px rgba(0, 0, 0, 0.04);
         }
 
+        button.preview-segment {
+            border: none;
+            margin: 0;
+            cursor: pointer;
+            font: inherit;
+            line-height: inherit;
+            background: transparent;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        button.preview-segment:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+
+        .preview-head-lead {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .preview-key-state-switch .preview-segment {
+            padding: 5px 10px;
+            font-size: 11px;
+        }
+
         .preview-head-row {
             display: grid;
             grid-template-columns: auto minmax(0, 1fr) auto;
@@ -547,13 +576,21 @@
             right: 14px;
         }
 
+        /* 棋盘格底：画布透明区域可看出真实透明度（避免整块白底误导） */
         #keyboard-container {
             position: relative;
             display: inline-block;
             border-radius: 12px;
             overflow: hidden;
-            border: 0.5px solid rgba(0, 0, 0, 0.08);
-            background: #fff;
+            border: 0.5px solid rgba(0, 0, 0, 0.12);
+            background-color: #b8bec8;
+            background-image:
+                linear-gradient(45deg, #9aa2ae 25%, transparent 25%),
+                linear-gradient(-45deg, #9aa2ae 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #9aa2ae 75%),
+                linear-gradient(-45deg, transparent 75%, #9aa2ae 75%);
+            background-size: 14px 14px;
+            background-position: 0 0, 0 7px, 7px -7px, -7px 0;
             box-shadow:
                 0 0 0 0.5px rgba(0, 0, 0, 0.04),
                 0 4px 16px rgba(0, 0, 0, 0.08),
@@ -698,6 +735,55 @@
 
         .control-group.full-span {
             grid-column: 1 / -1;
+        }
+
+        .appearance-layout {
+            display: grid;
+            gap: 14px;
+        }
+
+        .appearance-section {
+            border-radius: 14px;
+            border: 1px solid #dfe6f2;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 249, 255, 0.72));
+            padding: 10px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        .appearance-section-head {
+            margin: 0 0 10px;
+            padding: 0 2px 8px;
+            border-bottom: 1px solid #e5ebf5;
+        }
+
+        .appearance-section-head strong {
+            display: block;
+            font-size: 13px;
+            color: #2b3a52;
+            letter-spacing: 0.1px;
+        }
+
+        .appearance-section-head span {
+            display: block;
+            margin-top: 2px;
+            font-size: 11px;
+            color: #6a768b;
+        }
+
+        .appearance-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(300px, 1fr));
+            gap: 10px;
+        }
+
+        .appearance-grid .full-span {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 1200px) {
+            .appearance-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .obs-fixed-card {
@@ -1335,6 +1421,93 @@
             flex: 1;
         }
 
+        /* 按键编辑：分区卡片，与外观页层次一致 */
+        #key-edit-modal-content.modal {
+            width: auto;
+            min-width: 340px;
+            max-width: min(480px, calc(100vw - 24px));
+        }
+
+        #key-edit-modal-content .key-edit-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #key-edit-modal-content .key-edit-section {
+            border: 1px solid #e3e8f0;
+            border-radius: 12px;
+            padding: 12px 12px 10px;
+            background: linear-gradient(165deg, rgba(252, 253, 255, 0.98), rgba(245, 248, 255, 0.94));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        }
+
+        #key-edit-modal-content .key-edit-section-head {
+            margin: 0 0 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e8ecf4;
+        }
+
+        #key-edit-modal-content .key-edit-section-head strong {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            color: #2b3546;
+            letter-spacing: 0.02em;
+        }
+
+        #key-edit-modal-content .key-edit-section-head span {
+            display: block;
+            margin-top: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #6a7689;
+            line-height: 1.35;
+        }
+
+        #key-edit-modal-content .key-edit-two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 14px;
+            align-items: start;
+        }
+
+        @media (max-width: 440px) {
+            #key-edit-modal-content .key-edit-two-col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        #key-edit-modal-content .key-edit-section .form-row {
+            margin-bottom: 0;
+        }
+
+        #key-edit-modal-content .key-edit-section .form-row + .form-row {
+            margin-top: 8px;
+        }
+
+        #key-edit-modal-content .key-edit-col {
+            min-width: 0;
+        }
+
+        #key-edit-modal-content .key-edit-hint {
+            margin: 0 0 8px;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #7a8699;
+        }
+
+        #key-edit-modal-content input[type="color"] {
+            width: 100%;
+            margin-top: 4px;
+        }
+
+        #key-bg-pressed-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        /* 调色板外壳：勿加 .modal（.modal 有固定宽度与半透明白底，会在左侧形成一条淡框） */
         #color-picker-modal {
             position: fixed;
             inset: 0;
@@ -1342,8 +1515,17 @@
             display: none;
             align-items: center;
             justify-content: center;
-            background: rgba(56, 69, 91, 0.24);
-            backdrop-filter: blur(8px);
+            width: auto;
+            min-width: 0;
+            max-width: none;
+            padding: 0;
+            margin: 0;
+            border: none;
+            background: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            overflow: visible;
         }
 
         #color-picker-modal:not(.hidden) {
@@ -1351,17 +1533,32 @@
         }
 
         #color-picker-modal .modal-content {
+            position: relative;
             width: min(340px, calc(100vw - 24px));
+            max-width: 320px;
             border-radius: 16px;
             border: 1px solid #d7dee9;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.98);
             box-shadow: 0 20px 52px rgba(36, 52, 78, 0.16);
             padding: 18px;
+            padding-top: 22px;
+            box-sizing: border-box;
+        }
+
+        #color-picker-modal .modal-drag-handle {
+            border-radius: 16px 16px 0 0;
         }
 
         #color-picker-title {
             margin-bottom: 8px;
             color: #2d3748;
+        }
+
+        #color-picker-modal input[type="color"] {
+            border: 1px solid #d6dce7;
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
         }
 
         #add-key-hint {
@@ -1471,8 +1668,15 @@
         <section class="preview-pane">
             <div class="preview-head">
                 <div class="preview-head-row">
-                    <div class="preview-segmented" role="group" aria-label="预览画布">
-                        <span class="preview-segment is-selected" aria-current="true">预览</span>
+                    <div class="preview-head-lead">
+                        <div class="preview-segmented" role="group" aria-label="预览画布">
+                            <span class="preview-segment is-selected" aria-current="true">预览</span>
+                        </div>
+                        <div class="preview-segmented preview-key-state-switch" role="group" aria-label="预览区按键状态">
+                            <button type="button" class="preview-segment is-selected" data-preview-mode="live" data-click="setPreviewKeyStateMode:live" aria-pressed="true" title="按真实按键/WebSocket 显示按下">实时</button>
+                            <button type="button" class="preview-segment" data-preview-mode="all_pressed" data-click="setPreviewKeyStateMode:all_pressed" aria-pressed="false" title="全部显示为按下样式">全按下</button>
+                            <button type="button" class="preview-segment" data-preview-mode="all_unpressed" data-click="setPreviewKeyStateMode:all_unpressed" aria-pressed="false" title="全部显示为未按下样式">未按下</button>
+                        </div>
                     </div>
                     <div class="preview-head-center" title="当前编辑的配置文件（与页底 OBS 区一致）">
                         <div class="preview-config-pill">
@@ -1496,7 +1700,7 @@
                     </div>
                 </div>
                 <div class="preview-head-foot">
-                    <p class="preview-head-tip">拖画布边缘可缩放 · 滑块即时生效 · 改数字后点「应用」</p>
+                    <p class="preview-head-tip">拖画布边缘可缩放 · 滑块即时生效 · 改数字后点「应用」· 预览区键盘背后为棋盘格，便于观察透明与半透明效果 · 左上角可切换按键状态（实时 / 全按下 / 未按下）</p>
                     <div id="ws-status-mount" class="preview-ws-mount" aria-live="polite">
                         <div id="ws-status" class="ws-status-chip disconnected">全局按键捕获：正在连接…</div>
                     </div>
@@ -1567,64 +1771,188 @@
                 </div>
                 <div class="controls-tab-panels">
                 <div class="console-tab-section active" id="tab-appearance">
-                <div class="controls-grid">
-                    <div class="control-group">
-                        <label>背景图片:</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="file" id="bg-upload" accept="image/*" data-change="loadBackground:event">
-                            <button id="remove-bg-btn" class="btn btn-danger" data-click="removeBackground" style="display: none;">🗑️ 删除背景</button>
+                <div class="appearance-layout">
+                    <section class="appearance-section">
+                        <div class="appearance-section-head">
+                            <strong>背景层</strong>
+                            <span>先设置全局背景，再定义按键区域与非按键区域透明度</span>
                         </div>
-                    </div>
-
-                    <div class="control-group">
-                        <label>按键透明度: <span id="key-opacity-val">20</span>%</label>
-                        <div class="range-labeled-row">
-                            <span class="range-labeled-end">透明</span>
-                            <input type="range" id="key-opacity" class="range-labeled-input" min="0" max="100" value="20" data-input="updateOpacity:value">
-                            <span class="range-labeled-end">不透明</span>
-                        </div>
-                    </div>
-
-                    <div class="control-group">
-                        <label>背景缩放: <span id="bg-scale-val">100</span>%</label>
-                        <div class="range-labeled-row">
-                            <span class="range-labeled-end">缩小</span>
-                            <input type="range" id="bg-scale" class="range-labeled-input" min="10" max="200" value="100" data-input="updateBgScale:value">
-                            <span class="range-labeled-end">放大</span>
-                        </div>
-                    </div>
-
-                    <div class="control-group">
-                        <label>按键区域背景透明度: <span id="bg-key-opacity-val">80</span>%</label>
-                        <div class="range-labeled-row">
-                            <span class="range-labeled-end">透明</span>
-                            <input type="range" id="bg-key-opacity" class="range-labeled-input" min="0" max="100" value="80" data-input="updateBgKeyOpacity:value">
-                            <span class="range-labeled-end">不透明</span>
-                        </div>
-                    </div>
-
-                    <div class="control-group full-span">
-                        <label>非按键区域背景透明度: <span id="bg-non-key-opacity-val">20</span>%</label>
-                        <div class="range-labeled-row">
-                            <span class="range-labeled-end">透明</span>
-                            <input type="range" id="bg-non-key-opacity" class="range-labeled-input" min="0" max="100" value="20" data-input="updateBgNonKeyOpacity:value">
-                            <span class="range-labeled-end">不透明</span>
-                        </div>
-                    </div>
-
-                    <div class="control-group full-span">
-                        <label>按键颜色（全局）</label>
-                        <div class="color-picker-row">
-                            <div>
-                                <label>按下颜色:</label>
-                                <div class="color-preview" id="active-color-preview" style="background-color: #00ff00;" data-click="openColorPicker:active"></div>
+                        <div class="appearance-grid">
+                            <div class="control-group">
+                                <label>背景图片:</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <input type="file" id="bg-upload" accept="image/*" data-change="loadBackground:event">
+                                    <button id="remove-bg-btn" class="btn btn-danger" data-click="removeBackground" style="display: none;">🗑️ 删除背景</button>
+                                </div>
                             </div>
-                            <div>
-                                <label>未按下颜色:</label>
-                                <div class="color-preview" id="inactive-color-preview" style="background-color: #333333;" data-click="openColorPicker:inactive"></div>
+
+                            <div class="control-group">
+                                <label>背景缩放: <span id="bg-scale-val">100</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">缩小</span>
+                                    <input type="range" id="bg-scale" class="range-labeled-input" min="10" max="200" value="100" data-input="updateBgScale:value">
+                                    <span class="range-labeled-end">放大</span>
+                                </div>
+                            </div>
+
+                            <div class="control-group">
+                                <label>按键区域背景透明度（未按下）: <span id="bg-key-opacity-val">80</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="bg-key-opacity" class="range-labeled-input" min="0" max="100" value="80" data-input="updateBgKeyOpacity:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                                <div class="checkbox-row" style="margin-top: 8px;">
+                                    <input type="checkbox" id="bg-key-opacity-pressed-use-unpressed" checked data-change="toggleBgKeyOpacityPressedUseUnpressed">
+                                    <label for="bg-key-opacity-pressed-use-unpressed">按下态与未按下一致</label>
+                                </div>
+                                <label style="margin-top: 4px;">按键区域背景透明度（按下）: <span id="bg-key-opacity-pressed-val">80</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="bg-key-opacity-pressed" class="range-labeled-input" min="0" max="100" value="80" disabled data-input="updateBgKeyOpacityPressed:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                            </div>
+
+                            <div class="control-group">
+                                <label>非按键区域背景透明度: <span id="bg-non-key-opacity-val">20</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="bg-non-key-opacity" class="range-labeled-input" min="0" max="100" value="20" data-input="updateBgNonKeyOpacity:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    </section>
+
+                    <section class="appearance-section">
+                        <div class="appearance-section-head">
+                            <strong>键面层</strong>
+                            <span>控制按键颜色与按下/未按下透明度</span>
+                        </div>
+                        <div class="appearance-grid">
+                            <div class="control-group full-span">
+                                <label>按键颜色（全局）</label>
+                                <div class="color-picker-row">
+                                    <div>
+                                        <label>按下颜色:</label>
+                                        <div class="checkbox-row" style="margin-bottom: 6px;">
+                                            <input type="checkbox" id="active-color-use-inactive" data-change="toggleGlobalActiveColorUseInactive">
+                                            <label for="active-color-use-inactive">与未按下一致</label>
+                                        </div>
+                                        <div class="color-preview" id="active-color-preview" style="background-color: #00ff00;" data-click="openColorPicker:active"></div>
+                                    </div>
+                                    <div>
+                                        <label>未按下颜色:</label>
+                                        <div class="color-preview" id="inactive-color-preview" style="background-color: #333333;" data-click="openColorPicker:inactive"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="control-group full-span">
+                                <label>按键透明度（未按下）: <span id="key-opacity-val">20</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="key-opacity" class="range-labeled-input" min="0" max="100" value="20" data-input="updateOpacity:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                                <div class="checkbox-row" style="margin-top: 8px;">
+                                    <input type="checkbox" id="key-opacity-pressed-use-unpressed" checked data-change="toggleKeyOpacityPressedUseUnpressed">
+                                    <label for="key-opacity-pressed-use-unpressed">按下透明度与未按下一致</label>
+                                </div>
+                                <label style="margin-top: 4px;">按键透明度（按下）: <span id="key-opacity-pressed-val">20</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="key-opacity-pressed" class="range-labeled-input" min="0" max="100" value="20" disabled data-input="updateOpacityPressed:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="appearance-section">
+                        <div class="appearance-section-head">
+                            <strong>字母层</strong>
+                            <span>字母颜色与透明度独立于键面透明度</span>
+                        </div>
+                        <div class="appearance-grid">
+                            <div class="control-group full-span">
+                                <label>字母颜色与透明度（全局，独立于按键本体透明度）</label>
+                                <div class="color-picker-row">
+                                    <div>
+                                        <label>字母颜色（未按下）:</label>
+                                        <div class="color-preview" id="text-color-preview" style="background-color: #ffffff;" data-click="openColorPicker:text"></div>
+                                    </div>
+                                    <div>
+                                        <label>字母颜色（按下）:</label>
+                                        <div class="checkbox-row" style="margin-bottom: 6px;">
+                                            <input type="checkbox" id="text-color-pressed-use-unpressed" checked data-change="toggleGlobalTextColorPressedUseUnpressed">
+                                            <label for="text-color-pressed-use-unpressed">与未按下一致</label>
+                                        </div>
+                                        <div class="color-preview" id="text-color-pressed-preview" style="background-color: #ffffff;" data-click="openColorPicker:text_pressed"></div>
+                                    </div>
+                                </div>
+                                <label style="margin-top: 10px; display: block;">字母透明度（未按下）: <span id="text-opacity-val">0</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="text-opacity" class="range-labeled-input" min="0" max="100" value="0" data-input="updateTextOpacity:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                                <div class="checkbox-row" style="margin-top: 8px;">
+                                    <input type="checkbox" id="text-opacity-pressed-use-unpressed" checked data-change="toggleTextOpacityPressedUseUnpressed">
+                                    <label for="text-opacity-pressed-use-unpressed">按下透明度与未按下一致</label>
+                                </div>
+                                <label style="margin-top: 4px; display: block;">字母透明度（按下）: <span id="text-opacity-pressed-val">0</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="text-opacity-pressed" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateTextOpacityPressed:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="appearance-section">
+                        <div class="appearance-section-head">
+                            <strong>边框层</strong>
+                            <span>边框颜色与透明度独立控制，支持按下态分离</span>
+                        </div>
+                        <div class="appearance-grid">
+                            <div class="control-group full-span">
+                                <label>按键边框（全局，独立于按键本体透明度）</label>
+                                <div class="color-picker-row">
+                                    <div>
+                                        <label>边框颜色（未按下）:</label>
+                                        <div class="color-preview" id="border-color-preview" style="background-color: #555555;" data-click="openColorPicker:border"></div>
+                                    </div>
+                                    <div>
+                                        <label>边框颜色（按下）:</label>
+                                        <div class="checkbox-row" style="margin-bottom: 6px;">
+                                            <input type="checkbox" id="border-color-pressed-use-unpressed" checked data-change="toggleGlobalBorderColorPressedUseUnpressed">
+                                            <label for="border-color-pressed-use-unpressed">与未按下一致</label>
+                                        </div>
+                                        <div class="color-preview" id="border-color-pressed-preview" style="background-color: #555555;" data-click="openColorPicker:border_pressed"></div>
+                                    </div>
+                                </div>
+                                <label style="margin-top: 10px; display: block;">边框透明度（未按下）: <span id="border-opacity-val">0</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="border-opacity" class="range-labeled-input" min="0" max="100" value="0" data-input="updateBorderOpacity:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                                <div class="checkbox-row" style="margin-top: 8px;">
+                                    <input type="checkbox" id="border-opacity-pressed-use-unpressed" checked data-change="toggleBorderOpacityPressedUseUnpressed">
+                                    <label for="border-opacity-pressed-use-unpressed">按下透明度与未按下一致</label>
+                                </div>
+                                <label style="margin-top: 4px; display: block;">边框透明度（按下）: <span id="border-opacity-pressed-val">0</span>%</label>
+                                <div class="range-labeled-row">
+                                    <span class="range-labeled-end">透明</span>
+                                    <input type="range" id="border-opacity-pressed" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateBorderOpacityPressed:value">
+                                    <span class="range-labeled-end">不透明</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
                 </div>
 
@@ -1756,9 +2084,10 @@
     </div>
     
     <!-- 颜色选择器弹窗 -->
-    <div id="color-picker-modal" class="modal hidden">
-        <div class="modal-content" style="max-width: 320px;">
-            <h3 id="color-picker-title">选择颜色</h3>
+    <div id="color-picker-modal" class="hidden">
+        <div class="modal-content" id="color-picker-modal-content">
+            <div class="modal-drag-handle" id="color-picker-drag-handle" title="拖动调色板"></div>
+            <h3 id="color-picker-title" style="margin-top: 10px;">选择颜色</h3>
             <div style="margin: 15px 0;">
                 <input type="color" id="color-picker-input" style="width: 100%; height: 50px; border: none; cursor: pointer;">
             </div>
@@ -1793,122 +2122,261 @@
         <div class="modal" id="key-edit-modal-content">
             <div class="modal-drag-handle" id="key-edit-drag-handle"></div>
             <h3 style="margin-top: 10px;">编辑按键</h3>
-            <div class="form-row">
-                <div>
-                    <label>显示文字:</label>
-                    <input type="text" id="edit-key-label" placeholder="例如: Q">
-                </div>
-            </div>
-            <div class="form-row">
-                <div>
-                    <label>宽度 (像素):</label>
-                    <input type="number" id="edit-key-width" min="20" max="300" value="50">
-                </div>
-                <div>
-                    <label>高度 (像素):</label>
-                    <input type="number" id="edit-key-height" min="20" max="300" value="50">
-                </div>
-            </div>
-            <div class="form-row">
-                <div>
-                    <label>X 位置:</label>
-                    <input type="number" id="edit-key-x" min="0">
-                </div>
-                <div>
-                    <label>Y 位置:</label>
-                    <input type="number" id="edit-key-y" min="0">
-                </div>
-            </div>
-            <div class="form-row">
-                <div>
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="use-global-active" checked data-change="toggleKeyActiveColor">
-                        <label for="use-global-active">使用全局按下颜色</label>
+            <div class="key-edit-stack">
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>布局与文字</strong>
+                        <span>标签、尺寸与坐标</span>
                     </div>
-                    <input type="color" id="edit-key-active-color" value="#00ff00" disabled>
-                </div>
-                <div>
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="use-global-inactive" checked data-change="toggleKeyInactiveColor">
-                        <label for="use-global-inactive">使用全局未按下颜色</label>
+                    <div class="form-row">
+                        <div>
+                            <label>显示文字:</label>
+                            <input type="text" id="edit-key-label" placeholder="例如: Q">
+                        </div>
                     </div>
-                    <input type="color" id="edit-key-inactive-color" value="#333333" disabled>
-                </div>
-            </div>
-            
-            <!-- 按键独立背景图片 -->
-            <div class="form-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
-                <div style="flex: 1;">
-                    <label>按键背景图片 (优先于全局背景):</label>
-                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
-                        <input type="file" id="edit-key-bg-image" accept="image/*" data-change="loadKeyBackgroundImage:event" style="flex: 1;">
-                        <button class="btn btn-danger" id="remove-key-bg-btn" data-click="removeKeyBackgroundImage" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
+                    <div class="form-row">
+                        <div>
+                            <label>宽度 (像素):</label>
+                            <input type="number" id="edit-key-width" min="20" max="300" value="50">
+                        </div>
+                        <div>
+                            <label>高度 (像素):</label>
+                            <input type="number" id="edit-key-height" min="20" max="300" value="50">
+                        </div>
                     </div>
-                    <div id="key-bg-preview" style="margin-top: 8px; max-width: 100px; max-height: 60px; overflow: hidden; border-radius: 4px; display: none;">
-                        <img id="key-bg-preview-img" style="width: 100%; height: 100%; object-fit: cover;">
+                    <div class="form-row">
+                        <div>
+                            <label>X 位置:</label>
+                            <input type="number" id="edit-key-x" min="0">
+                        </div>
+                        <div>
+                            <label>Y 位置:</label>
+                            <input type="number" id="edit-key-y" min="0">
+                        </div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- 按键透明度设置 -->
-            <div class="form-row" style="margin-top: 10px;">
-                <div style="flex: 1;">
+                </section>
+
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>键面颜色</strong>
+                        <span>按下 / 未按下；可勾选使用全局</span>
+                    </div>
+                    <div class="key-edit-two-col">
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-active" checked data-change="toggleKeyActiveColor">
+                                <label for="use-global-active">使用全局按下颜色</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="edit-key-active-use-inactive" data-change="toggleKeyActiveUseInactive">
+                                <label for="edit-key-active-use-inactive">按下与未按下一致</label>
+                            </div>
+                            <label>按下颜色</label>
+                            <input type="color" id="edit-key-active-color" value="#00ff00" disabled>
+                        </div>
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-inactive" checked data-change="toggleKeyInactiveColor">
+                                <label for="use-global-inactive">使用全局未按下颜色</label>
+                            </div>
+                            <label>未按下颜色</label>
+                            <input type="color" id="edit-key-inactive-color" value="#333333" disabled>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>键面透明度</strong>
+                        <span>独立于字母与边框；可覆盖全局</span>
+                    </div>
                     <div class="checkbox-row">
                         <input type="checkbox" id="use-global-opacity" checked data-change="toggleKeyOpacity">
                         <label for="use-global-opacity">使用全局按键透明度</label>
                     </div>
-                    <label>按键透明度: <span id="edit-key-opacity-val">20</span>%</label>
+                    <label>未按下: <span id="edit-key-opacity-val">20</span>%</label>
                     <div class="range-labeled-row">
                         <span class="range-labeled-end">透明</span>
                         <input type="range" id="edit-key-opacity" class="range-labeled-input" min="0" max="100" value="20" disabled data-input="updateKeyOpacityPreview:value">
                         <span class="range-labeled-end">不透明</span>
                     </div>
-                </div>
-            </div>
-            
-            <!-- 按键背景图片透明度设置 -->
-            <div class="form-row" id="key-bg-opacity-row" style="display: none;">
-                <div style="flex: 1;">
-                    <label>背景图片透明度: <span id="edit-key-bg-opacity-val">0</span>%</label>
+                    <div class="checkbox-row" style="margin-top: 8px;">
+                        <input type="checkbox" id="edit-key-opacity-pressed-use-unpressed" checked data-change="toggleKeyOpacityPressedUseUnpressedInEdit">
+                        <label for="edit-key-opacity-pressed-use-unpressed">按下与未按下一致</label>
+                    </div>
+                    <label>按下: <span id="edit-key-opacity-pressed-val">20</span>%</label>
                     <div class="range-labeled-row">
                         <span class="range-labeled-end">透明</span>
-                        <input type="range" id="edit-key-bg-opacity" class="range-labeled-input" min="0" max="100" value="0" data-input="updateKeyBgOpacityPreview:value">
+                        <input type="range" id="edit-key-opacity-pressed" class="range-labeled-input" min="0" max="100" value="20" disabled data-input="updateKeyOpacityPressedPreview:value">
                         <span class="range-labeled-end">不透明</span>
                     </div>
-                </div>
-            </div>
-            
-            <!-- 背景设置模式切换 -->
-            <div class="form-row" id="key-bg-mode-row" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px;">
-                <div style="flex: 1;">
-                    <label style="color: #aaa; font-size: 11px; display: block; margin-bottom: 8px;">背景设置模式:</label>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn" id="key-bg-mode-simple" data-click="setKeyBgMode:simple" style="font-size: 11px; padding: 5px 12px; flex: 1;">简单 (自动填满)</button>
-                        <button class="btn btn-primary" id="key-bg-mode-advanced" data-click="setKeyBgMode:advanced" style="font-size: 11px; padding: 5px 12px; flex: 1;">高级 (手动调整)</button>
+                </section>
+
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>字母</strong>
+                        <span>颜色与透明度；与键面透明度无关</span>
                     </div>
-                </div>
-            </div>
-            
-            <!-- 按键背景高级设置 -->
-            <div class="form-row" id="key-bg-advanced-row" style="display: none; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px;">
-                <div style="flex: 1;">
-                    <label style="color: #aaa; font-size: 11px; display: block; margin-bottom: 8px;">背景调整 (编辑时按住按键拖动背景/滚轮调整缩放):</label>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <div style="flex: 1; min-width: 120px;">
+                    <div class="key-edit-two-col">
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-text-color" checked data-change="toggleKeyTextColor">
+                                <label for="use-global-text-color">使用全局字母颜色</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="edit-key-text-color-pressed-use-unpressed" checked data-change="toggleKeyTextColorPressedUseUnpressed">
+                                <label for="edit-key-text-color-pressed-use-unpressed">按下与未按下一致</label>
+                            </div>
+                            <label>未按下</label>
+                            <input type="color" id="edit-key-text-color" value="#ffffff" disabled>
+                            <label style="margin-top: 8px;">按下</label>
+                            <input type="color" id="edit-key-text-color-pressed" value="#ffffff" disabled>
+                        </div>
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-text-opacity" checked data-change="toggleKeyTextOpacity">
+                                <label for="use-global-text-opacity">使用全局字母透明度</label>
+                            </div>
+                            <label>未按下: <span id="edit-key-text-opacity-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-text-opacity" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateKeyTextOpacityPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                            <div class="checkbox-row" style="margin-top: 8px;">
+                                <input type="checkbox" id="edit-key-text-opacity-pressed-use-unpressed" checked data-change="toggleKeyTextOpacityPressedUseUnpressed">
+                                <label for="edit-key-text-opacity-pressed-use-unpressed">按下与未按下一致</label>
+                            </div>
+                            <label>按下: <span id="edit-key-text-opacity-pressed-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-text-opacity-pressed" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateKeyTextOpacityPressedPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>边框</strong>
+                        <span>颜色与透明度独立</span>
+                    </div>
+                    <div class="key-edit-two-col">
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-border-color" checked data-change="toggleKeyBorderColor">
+                                <label for="use-global-border-color">使用全局边框颜色</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="edit-key-border-color-pressed-use-unpressed" checked data-change="toggleKeyBorderColorPressedUseUnpressed">
+                                <label for="edit-key-border-color-pressed-use-unpressed">按下与未按下一致</label>
+                            </div>
+                            <label>未按下</label>
+                            <input type="color" id="edit-key-border-color" value="#555555" disabled>
+                            <label style="margin-top: 8px;">按下</label>
+                            <input type="color" id="edit-key-border-color-pressed" value="#555555" disabled>
+                        </div>
+                        <div class="key-edit-col">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="use-global-border-opacity" checked data-change="toggleKeyBorderOpacity">
+                                <label for="use-global-border-opacity">使用全局边框透明度</label>
+                            </div>
+                            <label>未按下: <span id="edit-key-border-opacity-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-border-opacity" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateKeyBorderOpacityPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                            <div class="checkbox-row" style="margin-top: 8px;">
+                                <input type="checkbox" id="edit-key-border-opacity-pressed-use-unpressed" checked data-change="toggleKeyBorderOpacityPressedUseUnpressed">
+                                <label for="edit-key-border-opacity-pressed-use-unpressed">按下与未按下一致</label>
+                            </div>
+                            <label>按下: <span id="edit-key-border-opacity-pressed-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-border-opacity-pressed" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateKeyBorderOpacityPressedPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="key-edit-section">
+                    <div class="key-edit-section-head">
+                        <strong>按键背景图</strong>
+                        <span>覆盖全局背景；可选按下时换图</span>
+                    </div>
+                    <p class="key-edit-hint">未设置时沿用全局背景；设置后本键优先显示下图。</p>
+                    <label>未按下 / 默认图</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <input type="file" id="edit-key-bg-image" accept="image/*" data-change="loadKeyBackgroundImage:event" style="flex: 1; min-width: 0;">
+                        <button class="btn btn-danger" id="remove-key-bg-btn" data-click="removeKeyBackgroundImage" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
+                    </div>
+                    <div id="key-bg-preview" style="margin-top: 8px; max-width: 120px; max-height: 72px; overflow: hidden; border-radius: 8px; display: none; border: 1px solid #e3e8f0;">
+                        <img id="key-bg-preview-img" alt="" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div id="key-bg-pressed-row" style="display: none; margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d8dee8;">
+                        <label>按下时专用图（可选）</label>
+                        <p class="key-edit-hint" style="margin-top: 4px;">与默认图共用缩放、偏移与显示模式。</p>
+                        <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                            <input type="file" id="edit-key-bg-pressed-image" accept="image/*" data-change="loadKeyBackgroundPressedImage:event" style="flex: 1; min-width: 0;">
+                            <button type="button" class="btn btn-danger" id="remove-key-bg-pressed-btn" data-click="removeKeyBackgroundPressedImage" style="display: none; padding: 5px 10px; font-size: 10px;">删除</button>
+                        </div>
+                        <div id="key-bg-pressed-preview" style="margin-top: 8px; max-width: 120px; max-height: 72px; overflow: hidden; border-radius: 8px; display: none; border: 1px solid #e3e8f0;">
+                            <img id="key-bg-pressed-preview-img" alt="" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                    </div>
+
+                    <div class="form-row" id="key-bg-opacity-row" style="display: none; margin-top: 12px;">
+                        <div style="flex: 1;">
+                            <label>图本身透明度（未按下）: <span id="edit-key-bg-opacity-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-bg-opacity" class="range-labeled-input" min="0" max="100" value="0" data-input="updateKeyBgOpacityPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                            <div class="checkbox-row" style="margin-top: 8px;">
+                                <input type="checkbox" id="edit-key-bg-opacity-pressed-use-unpressed" checked data-change="toggleKeyBgOpacityPressedUseUnpressed">
+                                <label for="edit-key-bg-opacity-pressed-use-unpressed">按下与未按下一致</label>
+                            </div>
+                            <label>图本身透明度（按下）: <span id="edit-key-bg-opacity-pressed-val">0</span>%</label>
+                            <div class="range-labeled-row">
+                                <span class="range-labeled-end">透明</span>
+                                <input type="range" id="edit-key-bg-opacity-pressed" class="range-labeled-input" min="0" max="100" value="0" disabled data-input="updateKeyBgOpacityPressedPreview:value">
+                                <span class="range-labeled-end">不透明</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row" id="key-bg-mode-row" style="display: none; margin-top: 12px;">
+                        <div style="flex: 1;">
+                            <label>铺满方式</label>
+                            <div style="display: flex; gap: 8px; margin-top: 6px;">
+                                <button class="btn" id="key-bg-mode-simple" type="button" data-click="setKeyBgMode:simple" style="font-size: 11px; padding: 6px 10px; flex: 1;">简单 · 自动填满</button>
+                                <button class="btn btn-primary" id="key-bg-mode-advanced" type="button" data-click="setKeyBgMode:advanced" style="font-size: 11px; padding: 6px 10px; flex: 1;">高级 · 手动</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row" id="key-bg-advanced-row" style="display: none; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label>高级调整</label>
+                            <p class="key-edit-hint">编辑时可在画布上拖背景、滚轮调缩放。</p>
                             <label>背景缩放: <span id="edit-key-bg-scale-val">100</span>%</label>
                             <div class="range-labeled-row">
                                 <span class="range-labeled-end">缩小</span>
                                 <input type="range" id="edit-key-bg-scale" class="range-labeled-input" min="1" max="500" value="100" data-input="updateKeyBgScalePreview:value">
                                 <span class="range-labeled-end">放大</span>
                             </div>
+                            <div style="margin-top: 10px;">
+                                <button class="btn" type="button" id="toggle-bg-view-mode" data-click="toggleKeyBgViewMode" style="font-size: 11px; padding: 5px 12px;">显示模式: 完整背景</button>
+                            </div>
                         </div>
                     </div>
-                    <div style="margin-top: 8px; display: flex; gap: 10px;">
-                        <button class="btn" id="toggle-bg-view-mode" data-click="toggleKeyBgViewMode" style="font-size: 10px; padding: 3px 8px;">显示模式: 完整背景</button>
-                    </div>
-                </div>
+                </section>
             </div>
-            
+
             <div class="btn-group">
                 <button class="btn" data-click="saveKeyEdit">保存</button>
                 <button class="btn btn-danger" data-click="cancelKeyEdit">取消</button>

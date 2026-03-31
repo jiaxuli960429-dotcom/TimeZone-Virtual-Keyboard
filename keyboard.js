@@ -8,10 +8,25 @@ const CONFIG = {
     keySize: 50,
     keyGap: 5,
     keyOpacity: 0.8,
+    keyOpacityPressed: 0.8,
+    keyOpacityPressedUseUnpressed: true,
     activeColor: '#00ff00',
+    activeColorUseInactive: false,
     inactiveColor: '#333333',
     textColor: '#ffffff',
+    textColorPressed: '#ffffff',
+    textColorPressedUseUnpressed: true,
+    /** 字母不透明度 0–1，独立于按键本体透明度 */
+    textOpacity: 1,
+    textOpacityPressed: 1,
+    textOpacityPressedUseUnpressed: true,
     borderColor: '#555555',
+    borderColorPressed: '#555555',
+    borderColorPressedUseUnpressed: true,
+    /** 边框不透明度 0–1，独立于按键本体透明度 */
+    borderOpacity: 1,
+    borderOpacityPressed: 1,
+    borderOpacityPressedUseUnpressed: true,
     canvasWidth: 1200,
     canvasHeight: 400
 };
@@ -22,6 +37,8 @@ const DEFAULT_CONFIG_TEMPLATE = Object.freeze({ ...CONFIG });
 // ==================== 状态 ====================
 let keys = []; // 按键列表
 let pressedKeys = new Set(); // 当前按下的按键
+/** 控制台预览：live=真实按键；all_pressed / all_unpressed=静态样式（调色板等 _previewPressed 仍优先生效） */
+let previewKeyStateMode = 'live';
 let isAddingKey = false; // 是否正在添加按键
 let draggedKey = null; // 正在拖拽的按键
 let dragOffset = { x: 0, y: 0 };
@@ -47,6 +64,8 @@ let bgImage = null; // 背景图片
 let bgPosition = { x: 0, y: 0 }; // 背景图片位置
 let bgScale = 1.0; // 背景图片缩放
 let bgKeyOpacity = 0.8; // 按键区域的背景透明度
+let bgKeyOpacityPressed = 0.8; // 按下态按键区域背景透明度
+let bgKeyOpacityPressedUseUnpressed = true; // 按下态是否跟随未按下
 let bgNonKeyOpacity = 0.8; // 非按键区域的背景透明度
 let isDraggingBg = false; // 是否正在拖拽背景图片
 let bgDragOffset = { x: 0, y: 0 }; // 背景拖拽偏移
@@ -223,6 +242,7 @@ function keyEditCtx() {
     return {
         CONFIG,
         setupKeyBackgroundImageUI,
+        setupKeyBackgroundPressedImageUI,
         updateKeyBgModeUI,
         updateKeyList,
         invalidateCanvas,
@@ -437,6 +457,16 @@ function setInputValue(id, value) {
     if (el) el.value = value;
 }
 
+function setChecked(id, checked) {
+    const el = byId(id);
+    if (el) el.checked = !!checked;
+}
+
+function setDisabled(id, disabled) {
+    const el = byId(id);
+    if (el) el.disabled = !!disabled;
+}
+
 function setText(id, value) {
     const el = byId(id);
     if (el) el.textContent = value;
@@ -478,6 +508,21 @@ function invokeDeclarativeAction(expr, event) {
         return;
     }
     fn();
+}
+
+function setPreviewKeyStateMode(mode) {
+    const allowed = ['live', 'all_pressed', 'all_unpressed'];
+    if (!allowed.includes(mode)) return;
+    previewKeyStateMode = mode;
+    document.querySelectorAll('[data-preview-mode]').forEach((el) => {
+        const m = el.getAttribute('data-preview-mode');
+        const on = m === mode;
+        el.classList.toggle('is-selected', on);
+        if (el.tagName === 'BUTTON') {
+            el.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+    });
+    invalidateCanvas();
 }
 
 function setupDeclarativeControlBindings() {
@@ -667,6 +712,14 @@ function configSnapshotFromFileForCompare(loaded) {
             o.bgKeyOpacity !== undefined && !Number.isNaN(Number(o.bgKeyOpacity))
                 ? parseFloat(String(o.bgKeyOpacity), 10)
                 : 0.8,
+        bgKeyOpacityPressed:
+            o.bgKeyOpacityPressed !== undefined && !Number.isNaN(Number(o.bgKeyOpacityPressed))
+                ? parseFloat(String(o.bgKeyOpacityPressed), 10)
+                : o.bgKeyOpacity !== undefined && !Number.isNaN(Number(o.bgKeyOpacity))
+                  ? parseFloat(String(o.bgKeyOpacity), 10)
+                  : 0.8,
+        bgKeyOpacityPressedUseUnpressed:
+            o.bgKeyOpacityPressedUseUnpressed !== undefined ? !!o.bgKeyOpacityPressedUseUnpressed : true,
         bgNonKeyOpacity:
             o.bgNonKeyOpacity !== undefined && !Number.isNaN(Number(o.bgNonKeyOpacity))
                 ? parseFloat(String(o.bgNonKeyOpacity), 10)
@@ -1324,6 +1377,13 @@ function setupVerticalLayoutSplitter() {
 // ==================== 初始化 ====================
 document.addEventListener('DOMContentLoaded', async () => {
     setupDeclarativeControlBindings();
+    toggleGlobalActiveColorUseInactive();
+    toggleGlobalTextColorPressedUseUnpressed();
+    toggleGlobalBorderColorPressedUseUnpressed();
+    toggleKeyOpacityPressedUseUnpressed();
+    toggleTextOpacityPressedUseUnpressed();
+    toggleBorderOpacityPressedUseUnpressed();
+    toggleBgKeyOpacityPressedUseUnpressed();
     updateObsOverlayUrlField();
     updateObsWorkflowUi();
     switchConsoleTab('appearance');
@@ -1455,6 +1515,7 @@ function render() {
         {
             roundRect,
             drawKey,
+            getBgKeyOpacityForKey: resolveGlobalBgKeyOpacityForKey,
             invalidateCanvas
         }
     );
@@ -1482,19 +1543,87 @@ function calculateSnap(key, isResize = false, resizeHandle = null) {
     );
 }
 
+function clampUnit(value, fallback = 1) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return fallback;
+    return Math.max(0, Math.min(1, n));
+}
+
+function resolveStateValue(options) {
+    const o = options || {};
+    const isPressed = !!o.isPressed;
+    if (!isPressed) {
+        return o.unpressedValue !== undefined ? o.unpressedValue : o.globalUnpressedValue;
+    }
+    const keyUsesUnpressed = o.keyUseUnpressedFlag === true;
+    if (keyUsesUnpressed) {
+        return o.unpressedValue !== undefined ? o.unpressedValue : o.globalUnpressedValue;
+    }
+    if (o.pressedValue !== undefined) {
+        return o.pressedValue;
+    }
+    if (o.globalUseUnpressedFlag === true) {
+        return o.unpressedValue !== undefined ? o.unpressedValue : o.globalUnpressedValue;
+    }
+    if (o.globalPressedValue !== undefined) {
+        return o.globalPressedValue;
+    }
+    return o.unpressedValue !== undefined ? o.unpressedValue : o.globalUnpressedValue;
+}
+
+function isKeyPressedForPreview(key) {
+    if (key && key._previewPressed) return true;
+    if (previewKeyStateMode === 'all_pressed') return true;
+    if (previewKeyStateMode === 'all_unpressed') return false;
+    return !!(key && pressedKeys.has(key.code));
+}
+
+function resolveGlobalBgKeyOpacityForKey(key) {
+    const base = clampUnit(bgKeyOpacity, 0.8);
+    if (!isKeyPressedForPreview(key)) return base;
+    if (bgKeyOpacityPressedUseUnpressed) return base;
+    return clampUnit(bgKeyOpacityPressed, base);
+}
+
 function drawKey(key) {
-    // 检查是否处于预览状态（设置按下颜色时）
-    const isPressed = pressedKeys.has(key.code) || key._previewPressed;
+    const isPressed = isKeyPressedForPreview(key);
     const w = key.width || CONFIG.keySize;
     const h = key.height || CONFIG.keySize;
 
-    // 获取颜色：优先使用按键自定义颜色，否则使用全局颜色
-    const activeColor = key.activeColor || CONFIG.activeColor;
-    const inactiveColor = key.inactiveColor || CONFIG.inactiveColor;
-    
-    // 获取透明度：优先使用按键自定义透明度，否则使用全局透明度
-    const keyOpacity = key.opacity !== undefined ? key.opacity : CONFIG.keyOpacity;
-    const bgOpacity = key.bgOpacity !== undefined ? key.bgOpacity : 1.0;
+    const faceColor = resolveStateValue({
+        isPressed,
+        unpressedValue: key.inactiveColor,
+        pressedValue: key.activeColor,
+        keyUseUnpressedFlag: key.activeColorUseInactive === true,
+        globalUnpressedValue: CONFIG.inactiveColor,
+        globalPressedValue: CONFIG.activeColor,
+        globalUseUnpressedFlag: CONFIG.activeColorUseInactive === true
+    });
+
+    const keyOpacity = clampUnit(
+        resolveStateValue({
+            isPressed,
+            unpressedValue: key.opacity,
+            pressedValue: key.opacityPressed,
+            keyUseUnpressedFlag: key.opacityPressedUseUnpressed === true,
+            globalUnpressedValue: CONFIG.keyOpacity,
+            globalPressedValue: CONFIG.keyOpacityPressed,
+            globalUseUnpressedFlag: CONFIG.keyOpacityPressedUseUnpressed === true
+        }),
+        CONFIG.keyOpacity
+    );
+    const bgOpacity = clampUnit(
+        resolveStateValue({
+            isPressed,
+            unpressedValue: key.bgOpacity,
+            pressedValue: key.bgOpacityPressed,
+            keyUseUnpressedFlag: key.bgOpacityPressedUseUnpressed === true,
+            globalUnpressedValue: 1,
+            globalPressedValue: 1,
+            globalUseUnpressedFlag: true
+        }),
+        1
+    );
 
     ctx.save();
 
@@ -1503,7 +1632,9 @@ function drawKey(key) {
     roundRect(ctx, key.x, key.y, w, h, 8);
     ctx.closePath();
 
-    // 如果有按键独立背景图片，优先绘制
+    // 如果有按键独立背景图片，优先绘制（按下时可切换为专用图，共用缩放/偏移/模式）
+    const bgDrawObj =
+        isPressed && key._bgPressedImageObj ? key._bgPressedImageObj : key._bgImageObj;
     if (key.bgImage && key._bgImageObj) {
         ctx.save();
         // 根据显示模式决定是否裁剪到按键范围
@@ -1518,8 +1649,8 @@ function drawKey(key) {
         
         // 简单模式：变形图片填满按键（stretch模式）
         if (key.bgMode === 'simple') {
-            const imgW = key._bgImageObj.width;
-            const imgH = key._bgImageObj.height;
+            const imgW = bgDrawObj.width;
+            const imgH = bgDrawObj.height;
             // 分别计算X和Y方向的缩放，使图片变形填满按键
             bgScaleX = w / imgW;
             bgScaleY = h / imgH;
@@ -1537,41 +1668,55 @@ function drawKey(key) {
         ctx.save();
         ctx.translate(key.x + bgOffsetX, key.y + bgOffsetY);
         ctx.scale(bgScaleX, bgScaleY);
-        ctx.drawImage(key._bgImageObj, 0, 0);
+        ctx.drawImage(bgDrawObj, 0, 0);
         ctx.restore();
         ctx.restore();
         
         // 绘制半透明颜色层（根据按下状态）
         ctx.save();
         ctx.clip();
-        if (isPressed) {
-            ctx.fillStyle = activeColor;
-            ctx.shadowColor = activeColor;
-            ctx.shadowBlur = 15;
-        } else {
-            ctx.fillStyle = inactiveColor;
-            ctx.shadowBlur = 0;
-        }
+        ctx.fillStyle = faceColor;
+        ctx.shadowColor = faceColor;
+        ctx.shadowBlur = isPressed ? 15 : 0;
         ctx.globalAlpha = keyOpacity; // 颜色层只受按键透明度影响
         ctx.fill();
         ctx.restore();
     } else {
         // 按键背景（纯色）
         ctx.globalAlpha = keyOpacity;
-        if (isPressed) {
-            ctx.fillStyle = activeColor;
-            ctx.shadowColor = activeColor;
-            ctx.shadowBlur = 15;
-        } else {
-            ctx.fillStyle = inactiveColor;
-            ctx.shadowBlur = 0;
-        }
+        ctx.fillStyle = faceColor;
+        ctx.shadowColor = faceColor;
+        ctx.shadowBlur = isPressed ? 15 : 0;
         ctx.fill();
     }
 
-    // 边框（应用按键透明度）
-    ctx.globalAlpha = keyOpacity;
-    ctx.strokeStyle = CONFIG.borderColor;
+    // 边框颜色/透明度独立于按键本体透明度
+    ctx.beginPath();
+    roundRect(ctx, key.x, key.y, w, h, 8);
+    ctx.closePath();
+    ctx.globalAlpha = 1;
+    const borderColor = resolveStateValue({
+        isPressed,
+        unpressedValue: key.borderColor,
+        pressedValue: key.borderColorPressed,
+        keyUseUnpressedFlag: key.borderColorPressedUseUnpressed === true,
+        globalUnpressedValue: CONFIG.borderColor,
+        globalPressedValue: CONFIG.borderColorPressed,
+        globalUseUnpressedFlag: CONFIG.borderColorPressedUseUnpressed === true
+    });
+    const borderAlpha = clampUnit(
+        resolveStateValue({
+            isPressed,
+            unpressedValue: key.borderOpacity,
+            pressedValue: key.borderOpacityPressed,
+            keyUseUnpressedFlag: key.borderOpacityPressedUseUnpressed === true,
+            globalUnpressedValue: CONFIG.borderOpacity,
+            globalPressedValue: CONFIG.borderOpacityPressed,
+            globalUseUnpressedFlag: CONFIG.borderOpacityPressedUseUnpressed === true
+        }),
+        CONFIG.borderOpacity
+    );
+    ctx.strokeStyle = canvasFillStyleWithAlpha(borderColor, borderAlpha);
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -1580,10 +1725,31 @@ function drawKey(key) {
         drawResizeHandles(key);
     }
 
-    // 文字（应用按键透明度）
+    // 文字颜色/透明度独立于按键本体透明度
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = keyOpacity;
-    ctx.fillStyle = CONFIG.textColor;
+    ctx.globalAlpha = 1;
+    const labelColor = resolveStateValue({
+        isPressed,
+        unpressedValue: key.textColor,
+        pressedValue: key.textColorPressed,
+        keyUseUnpressedFlag: key.textColorPressedUseUnpressed === true,
+        globalUnpressedValue: CONFIG.textColor,
+        globalPressedValue: CONFIG.textColorPressed,
+        globalUseUnpressedFlag: CONFIG.textColorPressedUseUnpressed === true
+    });
+    const labelAlpha = clampUnit(
+        resolveStateValue({
+            isPressed,
+            unpressedValue: key.textOpacity,
+            pressedValue: key.textOpacityPressed,
+            keyUseUnpressedFlag: key.textOpacityPressedUseUnpressed === true,
+            globalUnpressedValue: CONFIG.textOpacity,
+            globalPressedValue: CONFIG.textOpacityPressed,
+            globalUseUnpressedFlag: CONFIG.textOpacityPressedUseUnpressed === true
+        }),
+        CONFIG.textOpacity
+    );
+    ctx.fillStyle = canvasFillStyleWithAlpha(labelColor, labelAlpha);
     ctx.font = `bold ${Math.min(w > 60 ? 16 : 14, h / 2)}px Microsoft YaHei`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1658,6 +1824,40 @@ function drawResizeHandles(key) {
         ctx.fill();
         ctx.stroke();
     });
+}
+
+/** 将颜色（#rgb / #rrggbb / rgb()）与 0–1 透明度合成为 canvas fillStyle */
+function canvasFillStyleWithAlpha(color, alpha) {
+    const a = Math.max(0, Math.min(1, alpha === undefined || alpha === null || Number.isNaN(Number(alpha)) ? 1 : Number(alpha)));
+    if (!color || typeof color !== 'string') {
+        return 'rgba(255,255,255,' + a + ')';
+    }
+    const c = color.trim();
+    if (c.startsWith('rgba(')) {
+        return c;
+    }
+    if (c.startsWith('rgb(')) {
+        const m = c.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+        if (m) {
+            return 'rgba(' + m[1] + ',' + m[2] + ',' + m[3] + ',' + a + ')';
+        }
+    }
+    let hex = c.replace('#', '');
+    if (hex.length === 3) {
+        hex = hex
+            .split('')
+            .map((ch) => ch + ch)
+            .join('');
+    }
+    if (hex.length === 6) {
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        if ([r, g, b].every((n) => !Number.isNaN(n))) {
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+        }
+    }
+    return c;
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1830,6 +2030,79 @@ function removeKeyBackgroundImage() {
     keyBgModule.removeKeyBackgroundImage(keyBgCtx());
 }
 
+// 按下时专用背景图（需先设按键背景图）
+function setupKeyBackgroundPressedImageUI(key) {
+    keyBgModule.setupKeyBackgroundPressedImageUI(keyBgCtx(), key);
+}
+
+function loadKeyBackgroundPressedImage(event) {
+    keyBgModule.loadKeyBackgroundPressedImage(keyBgCtx(), event);
+}
+
+function removeKeyBackgroundPressedImage() {
+    keyBgModule.removeKeyBackgroundPressedImage(keyBgCtx());
+}
+
+function toggleKeyTextColor() {
+    keyEditModule.toggleKeyTextColor(keyEditCtx());
+}
+
+function toggleKeyActiveUseInactive() {
+    keyEditModule.toggleKeyActiveUseInactive(keyEditCtx());
+}
+
+function toggleKeyTextOpacity() {
+    keyEditModule.toggleKeyTextOpacity(keyEditCtx());
+}
+
+function updateKeyTextOpacityPreview(value) {
+    keyEditModule.updateKeyTextOpacityPreview(keyEditCtx(), value);
+}
+
+function toggleKeyOpacityPressedUseUnpressedInEdit() {
+    keyEditModule.toggleKeyOpacityPressedUseUnpressedInEdit(keyEditCtx());
+}
+
+function updateKeyOpacityPressedPreview(value) {
+    keyEditModule.updateKeyOpacityPressedPreview(keyEditCtx(), value);
+}
+
+function toggleKeyTextColorPressedUseUnpressed() {
+    keyEditModule.toggleKeyTextColorPressedUseUnpressed(keyEditCtx());
+}
+
+function toggleKeyTextOpacityPressedUseUnpressed() {
+    keyEditModule.toggleKeyTextOpacityPressedUseUnpressed(keyEditCtx());
+}
+
+function updateKeyTextOpacityPressedPreview(value) {
+    keyEditModule.updateKeyTextOpacityPressedPreview(keyEditCtx(), value);
+}
+
+function toggleKeyBorderColor() {
+    keyEditModule.toggleKeyBorderColor(keyEditCtx());
+}
+
+function toggleKeyBorderOpacity() {
+    keyEditModule.toggleKeyBorderOpacity(keyEditCtx());
+}
+
+function updateKeyBorderOpacityPreview(value) {
+    keyEditModule.updateKeyBorderOpacityPreview(keyEditCtx(), value);
+}
+
+function toggleKeyBorderColorPressedUseUnpressed() {
+    keyEditModule.toggleKeyBorderColorPressedUseUnpressed(keyEditCtx());
+}
+
+function toggleKeyBorderOpacityPressedUseUnpressed() {
+    keyEditModule.toggleKeyBorderOpacityPressedUseUnpressed(keyEditCtx());
+}
+
+function updateKeyBorderOpacityPressedPreview(value) {
+    keyEditModule.updateKeyBorderOpacityPressedPreview(keyEditCtx(), value);
+}
+
 // 切换按键透明度使用全局/自定义
 function toggleKeyOpacity() {
     keyBgModule.toggleKeyOpacity(keyBgCtx());
@@ -1856,6 +2129,14 @@ function updateEditMenuValues() {
 // 更新按键背景图片透明度预览
 function updateKeyBgOpacityPreview(value) {
     keyBgModule.updateKeyBgOpacityPreview(keyBgCtx(), value);
+}
+
+function toggleKeyBgOpacityPressedUseUnpressed() {
+    keyBgModule.toggleKeyBgOpacityPressedUseUnpressed(keyBgCtx());
+}
+
+function updateKeyBgOpacityPressedPreview(value) {
+    keyBgModule.updateKeyBgOpacityPressedPreview(keyBgCtx(), value);
 }
 
 // 更新按键背景缩放预览
@@ -1929,6 +2210,38 @@ function updateOpacity(val) {
     panelModule.updateOpacity({ CONFIG, invalidateCanvas }, val);
 }
 
+function updateOpacityPressed(val) {
+    panelModule.updateOpacityPressed({ CONFIG, invalidateCanvas }, val);
+}
+
+function toggleKeyOpacityPressedUseUnpressed() {
+    panelModule.toggleKeyOpacityPressedUseUnpressed({ CONFIG, invalidateCanvas });
+}
+
+function updateTextOpacity(val) {
+    panelModule.updateTextOpacity({ CONFIG, invalidateCanvas }, val);
+}
+
+function updateTextOpacityPressed(val) {
+    panelModule.updateTextOpacityPressed({ CONFIG, invalidateCanvas }, val);
+}
+
+function toggleTextOpacityPressedUseUnpressed() {
+    panelModule.toggleTextOpacityPressedUseUnpressed({ CONFIG, invalidateCanvas });
+}
+
+function updateBorderOpacity(val) {
+    panelModule.updateBorderOpacity({ CONFIG, invalidateCanvas }, val);
+}
+
+function updateBorderOpacityPressed(val) {
+    panelModule.updateBorderOpacityPressed({ CONFIG, invalidateCanvas }, val);
+}
+
+function toggleBorderOpacityPressedUseUnpressed() {
+    panelModule.toggleBorderOpacityPressedUseUnpressed({ CONFIG, invalidateCanvas });
+}
+
 // ==================== 背景图片功能 ====================
 
 function loadBackground(event) {
@@ -1965,10 +2278,45 @@ function updateBgKeyOpacity(val) {
             setBgKeyOpacity: (value) => {
                 bgKeyOpacity = value;
             },
+            getBgKeyOpacity: () => bgKeyOpacity,
+            getBgKeyOpacityPressedUseUnpressed: () => bgKeyOpacityPressedUseUnpressed,
+            setBgKeyOpacityPressed: (value) => {
+                bgKeyOpacityPressed = value;
+            },
             invalidateCanvas
         },
         val
     );
+}
+
+function updateBgKeyOpacityPressed(val) {
+    panelModule.updateBgKeyOpacityPressed(
+        {
+            getBgKeyOpacity: () => bgKeyOpacity,
+            getBgKeyOpacityPressedUseUnpressed: () => bgKeyOpacityPressedUseUnpressed,
+            setBgKeyOpacityPressedUseUnpressed: (value) => {
+                bgKeyOpacityPressedUseUnpressed = !!value;
+            },
+            setBgKeyOpacityPressed: (value) => {
+                bgKeyOpacityPressed = value;
+            },
+            invalidateCanvas
+        },
+        val
+    );
+}
+
+function toggleBgKeyOpacityPressedUseUnpressed() {
+    panelModule.toggleBgKeyOpacityPressedUseUnpressed({
+        getBgKeyOpacity: () => bgKeyOpacity,
+        setBgKeyOpacityPressed: (value) => {
+            bgKeyOpacityPressed = value;
+        },
+        setBgKeyOpacityPressedUseUnpressed: (value) => {
+            bgKeyOpacityPressedUseUnpressed = !!value;
+        },
+        invalidateCanvas
+    });
 }
 
 function updateBgNonKeyOpacity(val) {
@@ -1981,6 +2329,49 @@ function updateBgNonKeyOpacity(val) {
         },
         val
     );
+}
+
+function setColorPreviewInteractive(id, enabled) {
+    const el = byId(id);
+    if (!el) return;
+    el.style.pointerEvents = enabled ? 'auto' : 'none';
+    el.style.opacity = enabled ? '1' : '0.45';
+}
+
+function toggleGlobalActiveColorUseInactive() {
+    const cb = byId('active-color-use-inactive');
+    if (!cb) return;
+    CONFIG.activeColorUseInactive = !!(cb && cb.checked);
+    if (CONFIG.activeColorUseInactive) {
+        CONFIG.activeColor = CONFIG.inactiveColor;
+        setStyle('active-color-preview', 'backgroundColor', CONFIG.activeColor);
+    }
+    setColorPreviewInteractive('active-color-preview', !CONFIG.activeColorUseInactive);
+    invalidateCanvas();
+}
+
+function toggleGlobalTextColorPressedUseUnpressed() {
+    const cb = byId('text-color-pressed-use-unpressed');
+    if (!cb) return;
+    CONFIG.textColorPressedUseUnpressed = !!(cb && cb.checked);
+    if (CONFIG.textColorPressedUseUnpressed) {
+        CONFIG.textColorPressed = CONFIG.textColor;
+        setStyle('text-color-pressed-preview', 'backgroundColor', CONFIG.textColorPressed);
+    }
+    setColorPreviewInteractive('text-color-pressed-preview', !CONFIG.textColorPressedUseUnpressed);
+    invalidateCanvas();
+}
+
+function toggleGlobalBorderColorPressedUseUnpressed() {
+    const cb = byId('border-color-pressed-use-unpressed');
+    if (!cb) return;
+    CONFIG.borderColorPressedUseUnpressed = !!(cb && cb.checked);
+    if (CONFIG.borderColorPressedUseUnpressed) {
+        CONFIG.borderColorPressed = CONFIG.borderColor;
+        setStyle('border-color-pressed-preview', 'backgroundColor', CONFIG.borderColorPressed);
+    }
+    setColorPreviewInteractive('border-color-pressed-preview', !CONFIG.borderColorPressedUseUnpressed);
+    invalidateCanvas();
 }
 
 function removeBackground() {
@@ -1997,6 +2388,12 @@ function removeBackground() {
         setBgKeyOpacity: (value) => {
             bgKeyOpacity = value;
         },
+        setBgKeyOpacityPressed: (value) => {
+            bgKeyOpacityPressed = value;
+        },
+        setBgKeyOpacityPressedUseUnpressed: (value) => {
+            bgKeyOpacityPressedUseUnpressed = !!value;
+        },
         setBgNonKeyOpacity: (value) => {
             bgNonKeyOpacity = value;
         },
@@ -2005,7 +2402,7 @@ function removeBackground() {
 }
 
 // ==================== 颜色选择器功能 ====================
-let currentColorTarget = null; // 'active' 或 'inactive'
+let currentColorTarget = null; // 'active' | 'inactive' | 'text' | 'text_pressed' | 'border' | 'border_pressed'
 let originalColor = null; // 保存原始颜色用于取消
 let previewActiveState = false; // 预览时是否显示按下状态
 let lastSelectedColor = null; // 上一次选择的颜色（用于记录历史）
@@ -2160,6 +2557,8 @@ function buildCurrentConfigObject() {
         bgPosition,
         bgScale,
         bgKeyOpacity,
+        bgKeyOpacityPressed,
+        bgKeyOpacityPressedUseUnpressed,
         bgNonKeyOpacity,
         getBgImageElement: () => byId('bg-image')
     });
@@ -2274,11 +2673,21 @@ function applyConfig(config) {
             bgKeyOpacity = value;
         },
         getBgKeyOpacity: () => bgKeyOpacity,
+        setBgKeyOpacityPressed: (value) => {
+            bgKeyOpacityPressed = value;
+        },
+        getBgKeyOpacityPressed: () => bgKeyOpacityPressed,
+        setBgKeyOpacityPressedUseUnpressed: (value) => {
+            bgKeyOpacityPressedUseUnpressed = !!value;
+        },
+        getBgKeyOpacityPressedUseUnpressed: () => bgKeyOpacityPressedUseUnpressed,
         setBgNonKeyOpacity: (value) => {
             bgNonKeyOpacity = value;
         },
         getBgNonKeyOpacity: () => bgNonKeyOpacity,
         setInputValue,
+        setChecked,
+        setDisabled,
         setText,
         setStyle,
         setDisplay,
@@ -2302,6 +2711,13 @@ function applyConfig(config) {
         updateKeyList,
         resetLayoutHistory
     });
+    toggleGlobalActiveColorUseInactive();
+    toggleGlobalTextColorPressedUseUnpressed();
+    toggleGlobalBorderColorPressedUseUnpressed();
+    toggleKeyOpacityPressedUseUnpressed();
+    toggleTextOpacityPressedUseUnpressed();
+    toggleBorderOpacityPressedUseUnpressed();
+    toggleBgKeyOpacityPressedUseUnpressed();
     if (config && typeof config === 'object' && config.meta && typeof config.meta === 'object') {
         profileMeta = {
             author: String(config.meta.author != null ? config.meta.author : '').trim(),

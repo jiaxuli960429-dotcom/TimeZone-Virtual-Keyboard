@@ -60,6 +60,11 @@
         if (!editingKey) return;
         const color = e.target.value;
         editingKey.inactiveColor = color;
+        if (editingKey.activeColorUseInactive) {
+            editingKey.activeColor = color;
+            const activeInput = document.getElementById('edit-key-active-color');
+            if (activeInput) activeInput.value = color;
+        }
         delete editingKey._previewPressed;
         ctx.invalidateCanvas();
     }
@@ -69,7 +74,8 @@
         const useGlobal = document.getElementById('use-global-active').checked;
         const colorInput = document.getElementById('edit-key-active-color');
         if (!colorInput) return;
-        colorInput.disabled = useGlobal;
+        const useInactive = document.getElementById('edit-key-active-use-inactive').checked;
+        colorInput.disabled = useGlobal || useInactive;
         const editingKey = ctx.getEditingKey();
         if (!useGlobal && editingKey) {
             editingKey.activeColor = colorInput.value;
@@ -103,7 +109,281 @@
         if (inactiveColor) {
             inactiveColor.addEventListener('input', (e) => handleKeyInactiveColorPreview(ctx, e));
         }
+        const textColorInput = document.getElementById('edit-key-text-color');
+        if (textColorInput) {
+            textColorInput.addEventListener('input', (e) => {
+                const editingKey = ctx.getEditingKey();
+                if (!editingKey || document.getElementById('use-global-text-color').checked) return;
+                editingKey.textColor = e.target.value;
+                ctx.invalidateCanvas();
+            });
+        }
+        const borderColorInput = document.getElementById('edit-key-border-color');
+        if (borderColorInput) {
+            borderColorInput.addEventListener('input', (e) => {
+                const editingKey = ctx.getEditingKey();
+                if (!editingKey || document.getElementById('use-global-border-color').checked) return;
+                editingKey.borderColor = e.target.value;
+                ctx.invalidateCanvas();
+            });
+        }
+        const textColorPressedInput = document.getElementById('edit-key-text-color-pressed');
+        if (textColorPressedInput) {
+            textColorPressedInput.addEventListener('input', (e) => {
+                const editingKey = ctx.getEditingKey();
+                if (!editingKey || document.getElementById('edit-key-text-color-pressed-use-unpressed').checked) return;
+                editingKey.textColorPressed = e.target.value;
+                ctx.invalidateCanvas();
+            });
+        }
+        const borderColorPressedInput = document.getElementById('edit-key-border-color-pressed');
+        if (borderColorPressedInput) {
+            borderColorPressedInput.addEventListener('input', (e) => {
+                const editingKey = ctx.getEditingKey();
+                if (!editingKey || document.getElementById('edit-key-border-color-pressed-use-unpressed').checked) return;
+                editingKey.borderColorPressed = e.target.value;
+                ctx.invalidateCanvas();
+            });
+        }
         if (dragHandle) dragHandle.addEventListener('mousedown', startDragKeyEditModal);
+    }
+
+    function toggleKeyTextColor(ctx) {
+        if (!ctx) return;
+        const useGlobal = document.getElementById('use-global-text-color').checked;
+        const input = document.getElementById('edit-key-text-color');
+        if (!input) return;
+        input.disabled = useGlobal;
+        const editingKey = ctx.getEditingKey();
+        if (!useGlobal && editingKey) {
+            editingKey.textColor = input.value;
+        } else if (editingKey) {
+            delete editingKey.textColor;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyTextOpacity(ctx) {
+        if (!ctx) return;
+        const useGlobal = document.getElementById('use-global-text-opacity').checked;
+        const range = document.getElementById('edit-key-text-opacity');
+        const valEl = document.getElementById('edit-key-text-opacity-val');
+        if (!range || !valEl) return;
+        if (useGlobal) {
+            const g = ctx.CONFIG.textOpacity !== undefined ? ctx.CONFIG.textOpacity : 1;
+            const show = Math.round((1 - g) * 100);
+            range.value = show;
+            valEl.textContent = show;
+            range.disabled = true;
+            if (ctx.getEditingKey()) {
+                delete ctx.getEditingKey().textOpacity;
+            }
+        } else {
+            range.disabled = false;
+            if (ctx.getEditingKey()) {
+                ctx.getEditingKey().textOpacity = (100 - parseInt(range.value, 10)) / 100;
+            }
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function updateKeyTextOpacityPreview(ctx, value) {
+        const valEl = document.getElementById('edit-key-text-opacity-val');
+        if (valEl) valEl.textContent = value;
+        if (ctx.getEditingKey()) {
+            ctx.getEditingKey().textOpacity = (100 - parseInt(value, 10)) / 100;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyBorderColor(ctx) {
+        if (!ctx) return;
+        const useGlobal = document.getElementById('use-global-border-color').checked;
+        const input = document.getElementById('edit-key-border-color');
+        if (!input) return;
+        input.disabled = useGlobal;
+        const editingKey = ctx.getEditingKey();
+        if (!useGlobal && editingKey) {
+            editingKey.borderColor = input.value;
+        } else if (editingKey) {
+            delete editingKey.borderColor;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyBorderOpacity(ctx) {
+        if (!ctx) return;
+        const useGlobal = document.getElementById('use-global-border-opacity').checked;
+        const range = document.getElementById('edit-key-border-opacity');
+        const valEl = document.getElementById('edit-key-border-opacity-val');
+        if (!range || !valEl) return;
+        if (useGlobal) {
+            const g = ctx.CONFIG.borderOpacity !== undefined ? ctx.CONFIG.borderOpacity : 1;
+            const show = Math.round((1 - g) * 100);
+            range.value = show;
+            valEl.textContent = show;
+            range.disabled = true;
+            if (ctx.getEditingKey()) {
+                delete ctx.getEditingKey().borderOpacity;
+            }
+        } else {
+            range.disabled = false;
+            if (ctx.getEditingKey()) {
+                ctx.getEditingKey().borderOpacity = (100 - parseInt(range.value, 10)) / 100;
+            }
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function updateKeyBorderOpacityPreview(ctx, value) {
+        const valEl = document.getElementById('edit-key-border-opacity-val');
+        if (valEl) valEl.textContent = value;
+        if (ctx.getEditingKey()) {
+            ctx.getEditingKey().borderOpacity = (100 - parseInt(value, 10)) / 100;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyActiveUseInactive(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-active-use-inactive');
+        const input = document.getElementById('edit-key-active-color');
+        if (!cb || !input) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.activeColorUseInactive = !!cb.checked;
+        if (editingKey.activeColorUseInactive) {
+            const next = editingKey.inactiveColor || ctx.CONFIG.inactiveColor;
+            editingKey.activeColor = next;
+            input.value = next;
+        }
+        input.disabled = cb.checked || document.getElementById('use-global-active').checked;
+        editingKey._previewPressed = true;
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyOpacityPressedUseUnpressedInEdit(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-opacity-pressed-use-unpressed');
+        const input = document.getElementById('edit-key-opacity-pressed');
+        const value = document.getElementById('edit-key-opacity-pressed-val');
+        if (!cb || !input || !value) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.opacityPressedUseUnpressed = !!cb.checked;
+        if (editingKey.opacityPressedUseUnpressed) {
+            const base = editingKey.opacity !== undefined ? editingKey.opacity : ctx.CONFIG.keyOpacity;
+            editingKey.opacityPressed = base;
+            const p = Math.round((1 - base) * 100);
+            input.value = p;
+            value.textContent = p;
+        }
+        input.disabled = cb.checked;
+        ctx.invalidateCanvas();
+    }
+
+    function updateKeyOpacityPressedPreview(ctx, value) {
+        const valEl = document.getElementById('edit-key-opacity-pressed-val');
+        if (valEl) valEl.textContent = value;
+        const editingKey = ctx.getEditingKey();
+        if (editingKey) {
+            editingKey.opacityPressed = (100 - parseInt(value, 10)) / 100;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyTextColorPressedUseUnpressed(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-text-color-pressed-use-unpressed');
+        const input = document.getElementById('edit-key-text-color-pressed');
+        if (!cb || !input) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.textColorPressedUseUnpressed = !!cb.checked;
+        if (editingKey.textColorPressedUseUnpressed) {
+            const base = editingKey.textColor || ctx.CONFIG.textColor || '#ffffff';
+            editingKey.textColorPressed = base;
+            input.value = base;
+        }
+        input.disabled = cb.checked;
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyTextOpacityPressedUseUnpressed(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-text-opacity-pressed-use-unpressed');
+        const input = document.getElementById('edit-key-text-opacity-pressed');
+        const value = document.getElementById('edit-key-text-opacity-pressed-val');
+        if (!cb || !input || !value) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.textOpacityPressedUseUnpressed = !!cb.checked;
+        if (editingKey.textOpacityPressedUseUnpressed) {
+            const base = editingKey.textOpacity !== undefined ? editingKey.textOpacity : ctx.CONFIG.textOpacity;
+            editingKey.textOpacityPressed = base;
+            const p = Math.round((1 - base) * 100);
+            input.value = p;
+            value.textContent = p;
+        }
+        input.disabled = cb.checked;
+        ctx.invalidateCanvas();
+    }
+
+    function updateKeyTextOpacityPressedPreview(ctx, value) {
+        const valEl = document.getElementById('edit-key-text-opacity-pressed-val');
+        if (valEl) valEl.textContent = value;
+        const editingKey = ctx.getEditingKey();
+        if (editingKey) {
+            editingKey.textOpacityPressed = (100 - parseInt(value, 10)) / 100;
+        }
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyBorderColorPressedUseUnpressed(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-border-color-pressed-use-unpressed');
+        const input = document.getElementById('edit-key-border-color-pressed');
+        if (!cb || !input) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.borderColorPressedUseUnpressed = !!cb.checked;
+        if (editingKey.borderColorPressedUseUnpressed) {
+            const base = editingKey.borderColor || ctx.CONFIG.borderColor || '#555555';
+            editingKey.borderColorPressed = base;
+            input.value = base;
+        }
+        input.disabled = cb.checked;
+        ctx.invalidateCanvas();
+    }
+
+    function toggleKeyBorderOpacityPressedUseUnpressed(ctx) {
+        if (!ctx) return;
+        const cb = document.getElementById('edit-key-border-opacity-pressed-use-unpressed');
+        const input = document.getElementById('edit-key-border-opacity-pressed');
+        const value = document.getElementById('edit-key-border-opacity-pressed-val');
+        if (!cb || !input || !value) return;
+        const editingKey = ctx.getEditingKey();
+        if (!editingKey) return;
+        editingKey.borderOpacityPressedUseUnpressed = !!cb.checked;
+        if (editingKey.borderOpacityPressedUseUnpressed) {
+            const base = editingKey.borderOpacity !== undefined ? editingKey.borderOpacity : ctx.CONFIG.borderOpacity;
+            editingKey.borderOpacityPressed = base;
+            const p = Math.round((1 - base) * 100);
+            input.value = p;
+            value.textContent = p;
+        }
+        input.disabled = cb.checked;
+        ctx.invalidateCanvas();
+    }
+
+    function updateKeyBorderOpacityPressedPreview(ctx, value) {
+        const valEl = document.getElementById('edit-key-border-opacity-pressed-val');
+        if (valEl) valEl.textContent = value;
+        const editingKey = ctx.getEditingKey();
+        if (editingKey) {
+            editingKey.borderOpacityPressed = (100 - parseInt(value, 10)) / 100;
+        }
+        ctx.invalidateCanvas();
     }
 
     function restoreEditingKeyFromBackup(ctx, editingKey, editingKeyBackup) {
@@ -115,6 +395,9 @@
         const restoredKey = JSON.parse(JSON.stringify(editingKeyBackup));
         if (currentKey && currentKey._bgImageObj) {
             restoredKey._bgImageObj = currentKey._bgImageObj;
+        }
+        if (currentKey && currentKey._bgPressedImageObj) {
+            restoredKey._bgPressedImageObj = currentKey._bgPressedImageObj;
         }
         keys[keyIndex] = restoredKey;
         ctx.setKeys(keys);
@@ -150,7 +433,9 @@
         document.getElementById('use-global-inactive').checked = !hasInactiveColor;
         document.getElementById('edit-key-active-color').value = key.activeColor || CONFIG.activeColor;
         document.getElementById('edit-key-inactive-color').value = key.inactiveColor || CONFIG.inactiveColor;
-        document.getElementById('edit-key-active-color').disabled = !hasActiveColor;
+        const activeUseInactive = key.activeColorUseInactive === true;
+        document.getElementById('edit-key-active-use-inactive').checked = activeUseInactive;
+        document.getElementById('edit-key-active-color').disabled = !hasActiveColor || activeUseInactive;
         document.getElementById('edit-key-inactive-color').disabled = !hasInactiveColor;
 
         const hasCustomOpacity = key.opacity !== undefined;
@@ -159,6 +444,87 @@
         document.getElementById('edit-key-opacity').value = Math.round((1 - opacityValue) * 100);
         document.getElementById('edit-key-opacity-val').textContent = Math.round((1 - opacityValue) * 100);
         document.getElementById('edit-key-opacity').disabled = !hasCustomOpacity;
+        const opacityPressedUse = key.opacityPressedUseUnpressed !== undefined ? key.opacityPressedUseUnpressed : true;
+        document.getElementById('edit-key-opacity-pressed-use-unpressed').checked = opacityPressedUse;
+        const opPressedValue =
+            opacityPressedUse
+                ? opacityValue
+                : key.opacityPressed !== undefined
+                  ? key.opacityPressed
+                  : opacityValue;
+        document.getElementById('edit-key-opacity-pressed').value = Math.round((1 - opPressedValue) * 100);
+        document.getElementById('edit-key-opacity-pressed-val').textContent = Math.round((1 - opPressedValue) * 100);
+        document.getElementById('edit-key-opacity-pressed').disabled = opacityPressedUse;
+
+        const hasCustomTextColor = key.textColor !== undefined;
+        document.getElementById('use-global-text-color').checked = !hasCustomTextColor;
+        document.getElementById('edit-key-text-color').value =
+            key.textColor || CONFIG.textColor || '#ffffff';
+        document.getElementById('edit-key-text-color').disabled = !hasCustomTextColor;
+        const textColorPressedUse =
+            key.textColorPressedUseUnpressed !== undefined ? key.textColorPressedUseUnpressed : true;
+        document.getElementById('edit-key-text-color-pressed-use-unpressed').checked = textColorPressedUse;
+        const textColorPressedVal = textColorPressedUse
+            ? key.textColor || CONFIG.textColor || '#ffffff'
+            : key.textColorPressed || key.textColor || CONFIG.textColor || '#ffffff';
+        document.getElementById('edit-key-text-color-pressed').value = textColorPressedVal;
+        document.getElementById('edit-key-text-color-pressed').disabled = textColorPressedUse;
+
+        const hasCustomTextOpacity = key.textOpacity !== undefined;
+        document.getElementById('use-global-text-opacity').checked = !hasCustomTextOpacity;
+        const textOpVal =
+            key.textOpacity !== undefined ? key.textOpacity : CONFIG.textOpacity !== undefined ? CONFIG.textOpacity : 1;
+        document.getElementById('edit-key-text-opacity').value = Math.round((1 - textOpVal) * 100);
+        document.getElementById('edit-key-text-opacity-val').textContent = Math.round((1 - textOpVal) * 100);
+        document.getElementById('edit-key-text-opacity').disabled = !hasCustomTextOpacity;
+        const textOpPressedUse =
+            key.textOpacityPressedUseUnpressed !== undefined ? key.textOpacityPressedUseUnpressed : true;
+        document.getElementById('edit-key-text-opacity-pressed-use-unpressed').checked = textOpPressedUse;
+        const textOpPressedVal = textOpPressedUse
+            ? textOpVal
+            : key.textOpacityPressed !== undefined
+              ? key.textOpacityPressed
+              : textOpVal;
+        document.getElementById('edit-key-text-opacity-pressed').value = Math.round((1 - textOpPressedVal) * 100);
+        document.getElementById('edit-key-text-opacity-pressed-val').textContent = Math.round((1 - textOpPressedVal) * 100);
+        document.getElementById('edit-key-text-opacity-pressed').disabled = textOpPressedUse;
+
+        const hasCustomBorderColor = key.borderColor !== undefined;
+        document.getElementById('use-global-border-color').checked = !hasCustomBorderColor;
+        document.getElementById('edit-key-border-color').value =
+            key.borderColor || CONFIG.borderColor || '#555555';
+        document.getElementById('edit-key-border-color').disabled = !hasCustomBorderColor;
+        const borderColorPressedUse =
+            key.borderColorPressedUseUnpressed !== undefined ? key.borderColorPressedUseUnpressed : true;
+        document.getElementById('edit-key-border-color-pressed-use-unpressed').checked = borderColorPressedUse;
+        const borderColorPressedVal = borderColorPressedUse
+            ? key.borderColor || CONFIG.borderColor || '#555555'
+            : key.borderColorPressed || key.borderColor || CONFIG.borderColor || '#555555';
+        document.getElementById('edit-key-border-color-pressed').value = borderColorPressedVal;
+        document.getElementById('edit-key-border-color-pressed').disabled = borderColorPressedUse;
+
+        const hasCustomBorderOpacity = key.borderOpacity !== undefined;
+        document.getElementById('use-global-border-opacity').checked = !hasCustomBorderOpacity;
+        const borderOpVal =
+            key.borderOpacity !== undefined
+                ? key.borderOpacity
+                : CONFIG.borderOpacity !== undefined
+                  ? CONFIG.borderOpacity
+                  : 1;
+        document.getElementById('edit-key-border-opacity').value = Math.round((1 - borderOpVal) * 100);
+        document.getElementById('edit-key-border-opacity-val').textContent = Math.round((1 - borderOpVal) * 100);
+        document.getElementById('edit-key-border-opacity').disabled = !hasCustomBorderOpacity;
+        const borderOpPressedUse =
+            key.borderOpacityPressedUseUnpressed !== undefined ? key.borderOpacityPressedUseUnpressed : true;
+        document.getElementById('edit-key-border-opacity-pressed-use-unpressed').checked = borderOpPressedUse;
+        const borderOpPressedVal = borderOpPressedUse
+            ? borderOpVal
+            : key.borderOpacityPressed !== undefined
+              ? key.borderOpacityPressed
+              : borderOpVal;
+        document.getElementById('edit-key-border-opacity-pressed').value = Math.round((1 - borderOpPressedVal) * 100);
+        document.getElementById('edit-key-border-opacity-pressed-val').textContent = Math.round((1 - borderOpPressedVal) * 100);
+        document.getElementById('edit-key-border-opacity-pressed').disabled = borderOpPressedUse;
 
         const bgOpacityRow = document.getElementById('key-bg-opacity-row');
         const bgModeRow = document.getElementById('key-bg-mode-row');
@@ -169,6 +535,17 @@
             const bgOpacityValue = key.bgOpacity !== undefined ? key.bgOpacity : 1.0;
             document.getElementById('edit-key-bg-opacity').value = Math.round((1 - bgOpacityValue) * 100);
             document.getElementById('edit-key-bg-opacity-val').textContent = Math.round((1 - bgOpacityValue) * 100);
+            const bgOpacityPressedUse =
+                key.bgOpacityPressedUseUnpressed !== undefined ? key.bgOpacityPressedUseUnpressed : true;
+            document.getElementById('edit-key-bg-opacity-pressed-use-unpressed').checked = bgOpacityPressedUse;
+            const bgOpacityPressedVal = bgOpacityPressedUse
+                ? bgOpacityValue
+                : key.bgOpacityPressed !== undefined
+                  ? key.bgOpacityPressed
+                  : bgOpacityValue;
+            document.getElementById('edit-key-bg-opacity-pressed').value = Math.round((1 - bgOpacityPressedVal) * 100);
+            document.getElementById('edit-key-bg-opacity-pressed-val').textContent = Math.round((1 - bgOpacityPressedVal) * 100);
+            document.getElementById('edit-key-bg-opacity-pressed').disabled = bgOpacityPressedUse;
 
             ctx.setKeyBgMode(key.bgMode || 'advanced');
             ctx.updateKeyBgModeUI();
@@ -183,6 +560,11 @@
         }
 
         ctx.setupKeyBackgroundImageUI(key);
+        ctx.setupKeyBackgroundPressedImageUI(key);
+        const pressedRow = document.getElementById('key-bg-pressed-row');
+        if (pressedRow) {
+            pressedRow.style.display = key.bgImage ? 'flex' : 'none';
+        }
 
         const modal = document.getElementById('key-edit-modal-content');
         modal.style.position = 'relative';
@@ -239,17 +621,118 @@
 
         const useGlobalActive = document.getElementById('use-global-active').checked;
         const useGlobalInactive = document.getElementById('use-global-inactive').checked;
-        if (useGlobalActive) delete editingKey.activeColor;
+        if (useGlobalActive) {
+            delete editingKey.activeColor;
+            delete editingKey.activeColorUseInactive;
+        }
         else editingKey.activeColor = document.getElementById('edit-key-active-color').value;
         if (useGlobalInactive) delete editingKey.inactiveColor;
         else editingKey.inactiveColor = document.getElementById('edit-key-inactive-color').value;
+        if (!useGlobalActive) {
+            editingKey.activeColorUseInactive = document.getElementById('edit-key-active-use-inactive').checked;
+        }
 
         const useGlobalOpacity = document.getElementById('use-global-opacity').checked;
-        if (useGlobalOpacity) delete editingKey.opacity;
-        else editingKey.opacity = (100 - parseInt(document.getElementById('edit-key-opacity').value, 10)) / 100;
+        if (useGlobalOpacity) {
+            delete editingKey.opacity;
+            delete editingKey.opacityPressed;
+            delete editingKey.opacityPressedUseUnpressed;
+        } else {
+            editingKey.opacity = (100 - parseInt(document.getElementById('edit-key-opacity').value, 10)) / 100;
+            editingKey.opacityPressedUseUnpressed =
+                document.getElementById('edit-key-opacity-pressed-use-unpressed').checked;
+            if (editingKey.opacityPressedUseUnpressed) {
+                editingKey.opacityPressed = editingKey.opacity;
+            } else {
+                editingKey.opacityPressed =
+                    (100 - parseInt(document.getElementById('edit-key-opacity-pressed').value, 10)) / 100;
+            }
+        }
+
+        const useGlobalTextColor = document.getElementById('use-global-text-color').checked;
+        if (useGlobalTextColor) {
+            delete editingKey.textColor;
+            delete editingKey.textColorPressed;
+            delete editingKey.textColorPressedUseUnpressed;
+        }
+        else editingKey.textColor = document.getElementById('edit-key-text-color').value;
+        if (!useGlobalTextColor) {
+            editingKey.textColorPressedUseUnpressed =
+                document.getElementById('edit-key-text-color-pressed-use-unpressed').checked;
+            if (editingKey.textColorPressedUseUnpressed) {
+                editingKey.textColorPressed = editingKey.textColor || ctx.CONFIG.textColor || '#ffffff';
+            } else {
+                editingKey.textColorPressed = document.getElementById('edit-key-text-color-pressed').value;
+            }
+        } else {
+            delete editingKey.textColorPressed;
+        }
+
+        const useGlobalTextOpacity = document.getElementById('use-global-text-opacity').checked;
+        if (useGlobalTextOpacity) {
+            delete editingKey.textOpacity;
+            delete editingKey.textOpacityPressed;
+            delete editingKey.textOpacityPressedUseUnpressed;
+        } else {
+            editingKey.textOpacity =
+                (100 - parseInt(document.getElementById('edit-key-text-opacity').value, 10)) / 100;
+            editingKey.textOpacityPressedUseUnpressed =
+                document.getElementById('edit-key-text-opacity-pressed-use-unpressed').checked;
+            if (editingKey.textOpacityPressedUseUnpressed) {
+                editingKey.textOpacityPressed = editingKey.textOpacity;
+            } else {
+                editingKey.textOpacityPressed =
+                    (100 - parseInt(document.getElementById('edit-key-text-opacity-pressed').value, 10)) / 100;
+            }
+        }
+
+        const useGlobalBorderColor = document.getElementById('use-global-border-color').checked;
+        if (useGlobalBorderColor) {
+            delete editingKey.borderColor;
+            delete editingKey.borderColorPressed;
+            delete editingKey.borderColorPressedUseUnpressed;
+        }
+        else editingKey.borderColor = document.getElementById('edit-key-border-color').value;
+        if (!useGlobalBorderColor) {
+            editingKey.borderColorPressedUseUnpressed =
+                document.getElementById('edit-key-border-color-pressed-use-unpressed').checked;
+            if (editingKey.borderColorPressedUseUnpressed) {
+                editingKey.borderColorPressed = editingKey.borderColor || ctx.CONFIG.borderColor || '#555555';
+            } else {
+                editingKey.borderColorPressed = document.getElementById('edit-key-border-color-pressed').value;
+            }
+        } else {
+            delete editingKey.borderColorPressed;
+        }
+
+        const useGlobalBorderOpacity = document.getElementById('use-global-border-opacity').checked;
+        if (useGlobalBorderOpacity) {
+            delete editingKey.borderOpacity;
+            delete editingKey.borderOpacityPressed;
+            delete editingKey.borderOpacityPressedUseUnpressed;
+        } else {
+            editingKey.borderOpacity =
+                (100 - parseInt(document.getElementById('edit-key-border-opacity').value, 10)) / 100;
+            editingKey.borderOpacityPressedUseUnpressed =
+                document.getElementById('edit-key-border-opacity-pressed-use-unpressed').checked;
+            if (editingKey.borderOpacityPressedUseUnpressed) {
+                editingKey.borderOpacityPressed = editingKey.borderOpacity;
+            } else {
+                editingKey.borderOpacityPressed =
+                    (100 - parseInt(document.getElementById('edit-key-border-opacity-pressed').value, 10)) / 100;
+            }
+        }
 
         if (editingKey.bgImage) {
             editingKey.bgOpacity = (100 - parseInt(document.getElementById('edit-key-bg-opacity').value, 10)) / 100;
+            editingKey.bgOpacityPressedUseUnpressed =
+                document.getElementById('edit-key-bg-opacity-pressed-use-unpressed').checked;
+            if (editingKey.bgOpacityPressedUseUnpressed) {
+                editingKey.bgOpacityPressed = editingKey.bgOpacity;
+            } else {
+                editingKey.bgOpacityPressed =
+                    (100 - parseInt(document.getElementById('edit-key-bg-opacity-pressed').value, 10)) / 100;
+            }
             if (ctx.getKeyBgMode() === 'advanced') {
                 editingKey.bgScale = parseInt(document.getElementById('edit-key-bg-scale').value, 10) / 100;
             }
@@ -277,6 +760,21 @@
         toggleKeyInactiveColor,
         handleKeyActiveColorPreview,
         handleKeyInactiveColorPreview,
+        toggleKeyTextColor,
+        toggleKeyTextOpacity,
+        updateKeyTextOpacityPreview,
+        toggleKeyActiveUseInactive,
+        toggleKeyOpacityPressedUseUnpressedInEdit,
+        updateKeyOpacityPressedPreview,
+        toggleKeyTextColorPressedUseUnpressed,
+        toggleKeyTextOpacityPressedUseUnpressed,
+        updateKeyTextOpacityPressedPreview,
+        toggleKeyBorderColor,
+        toggleKeyBorderOpacity,
+        updateKeyBorderOpacityPreview,
+        toggleKeyBorderColorPressedUseUnpressed,
+        toggleKeyBorderOpacityPressedUseUnpressed,
+        updateKeyBorderOpacityPressedPreview,
         startDragKeyEditModal,
         dragKeyEditModal,
         stopDragKeyEditModal

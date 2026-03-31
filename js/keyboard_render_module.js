@@ -67,7 +67,10 @@
                 const w = key.width || s.CONFIG.keySize;
                 const h = key.height || s.CONFIG.keySize;
                 ctx.save();
-                ctx.globalAlpha = s.bgKeyOpacity;
+                ctx.globalAlpha =
+                    typeof d.getBgKeyOpacityForKey === 'function'
+                        ? d.getBgKeyOpacityForKey(key)
+                        : s.bgKeyOpacity;
                 ctx.beginPath();
                 d.roundRect(ctx, key.x, key.y, w, h, 8);
                 ctx.clip();
