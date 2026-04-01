@@ -18,6 +18,11 @@ _socket_meta: dict[WebSocket, dict[str, str]] = {}
 
 LOG_DIR = os.environ.get("TZK_LOG_DIR", "/opt/launch-advisor/logs/backend")
 DEFAULT_CONFIG_NAME = os.environ.get("TZK_DEFAULT_CONFIG_NAME", "默认87键")
+ADMIN_USERS = {
+    x.strip()
+    for x in os.environ.get("TZK_ADMIN_USERS", "admin").split(",")
+    if x.strip()
+}
 DEFAULT_CONFIG_FILE = os.environ.get(
     "TZK_DEFAULT_CONFIG_FILE",
     "/opt/launch-advisor/app/TimeZone-Virtual-Keyboard/webroot/configs/默认87键.json",
@@ -111,6 +116,20 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="invalid token")
     return user
+
+
+def _is_admin_user(user: dict[str, Any] | None) -> bool:
+    if not user:
+        return False
+    return str(user.get("username", "")).strip() in ADMIN_USERS
+
+
+def _user_payload_with_role(user: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(user["id"]),
+        "username": str(user["username"]),
+        "isAdmin": _is_admin_user(user),
+    }
 
 
 _bootstrap_db()
@@ -214,7 +233,7 @@ def login(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="invalid credentials")
     token = db.create_session(user["id"])
     APP_LOG.info("auth_login username=%s user_id=%s", username, user["id"])
-    return {"ok": True, "token": token, "user": user}
+    return {"ok": True, "token": token, "user": _user_payload_with_role(user)}
 
 
 @app.get("/api/v1/auth/me")
@@ -223,7 +242,26 @@ def auth_me(
     x_auth_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     user = get_current_user(authorization=authorization, x_auth_token=x_auth_token)
-    return {"ok": True, "user": user}
+    return {"ok": True, "user": _user_payload_with_role(user)}
+
+
+@app.put("/api/v1/public/configs/{name}")
+def update_public_config_by_name(
+    name: str,
+    payload: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    x_auth_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    user = get_current_user(authorization=authorization, x_auth_token=x_auth_token)
+    if not _is_admin_user(user):
+        raise HTTPException(status_code=403, detail="admin required")
+    content = payload.get("content")
+    if not isinstance(content, dict):
+        raise HTTPException(status_code=400, detail="content must be object")
+    system_user_id = db.ensure_system_user()
+    db.upsert_config(system_user_id, name, content, visibility="public")
+    APP_LOG.info("update_public_config_by_name name=%s admin=%s", name, user["username"])
+    return {"ok": True, "name": name}
 
 
 @app.post("/api/v1/auth/logout")

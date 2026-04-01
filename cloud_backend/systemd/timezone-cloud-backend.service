@@ -9,6 +9,7 @@ User=root
 WorkingDirectory=/opt/launch-advisor/app/TimeZone-Virtual-Keyboard/cloud_backend
 Environment=PYTHONUNBUFFERED=1
 Environment=TZK_LOG_DIR=/opt/launch-advisor/logs/backend
+Environment=TZK_ADMIN_USERS=ljx,admin
 ExecStart=/opt/launch-advisor/app/TimeZone-Virtual-Keyboard/cloud_backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=3

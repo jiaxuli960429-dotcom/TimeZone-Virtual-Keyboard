@@ -71,10 +71,12 @@ const RESIZE_HANDLE_SIZE = 8; // 调整手柄大小
 const RESIZE_EDGE_THRESHOLD = 6; // 边缘检测阈值
 
 const LAST_ACTIVE_PROFILE_STORAGE_KEY = 'vkLastActiveProfile';
+const LOCAL_PROFILES_STORAGE_KEY = 'tzkLocalProfiles';
 
 let savedConfigNamesCache = [];
 /** 与列表 API 同步的摘要行，用于本地方案卡片展示（作者 / 日期 / 键位数）。 */
 let savedConfigSummariesCache = [];
+let publicConfigNamesCache = [];
 let currentAuthUser = null;
 /** 当前文件中的 meta（保存时写回）；author 可由用户以后扩展编辑入口。 */
 let profileMeta = { author: '', updatedAt: '' };
@@ -559,6 +561,75 @@ function persistLastActiveProfile(name) {
     }
 }
 
+function readLocalProfilesMap() {
+    try {
+        const raw = localStorage.getItem(LOCAL_PROFILES_STORAGE_KEY) || '{}';
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+    } catch (_) {
+        /* ignore */
+    }
+    return {};
+}
+
+function writeLocalProfilesMap(mapObj) {
+    try {
+        localStorage.setItem(LOCAL_PROFILES_STORAGE_KEY, JSON.stringify(mapObj || {}));
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+function upsertLocalProfile(name, content) {
+    const safeName = String(name || '').trim();
+    if (!safeName || !content || typeof content !== 'object') return;
+    const mapObj = readLocalProfilesMap();
+    mapObj[safeName] = {
+        content,
+        updatedAt: new Date().toISOString()
+    };
+    writeLocalProfilesMap(mapObj);
+}
+
+function getLocalProfileContent(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return null;
+    const row = readLocalProfilesMap()[safeName];
+    if (!row || !row.content || typeof row.content !== 'object') return null;
+    return row.content;
+}
+
+function deleteLocalProfile(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return false;
+    const mapObj = readLocalProfilesMap();
+    if (!Object.prototype.hasOwnProperty.call(mapObj, safeName)) return false;
+    delete mapObj[safeName];
+    writeLocalProfilesMap(mapObj);
+    return true;
+}
+
+function listLocalProfileSummaries() {
+    const mapObj = readLocalProfilesMap();
+    return Object.entries(mapObj)
+        .map(([name, row]) => {
+            const content = row && typeof row === 'object' ? row.content : null;
+            const keyCount = content && Array.isArray(content.keys) ? content.keys.length : 0;
+            const author = content && content.meta ? String(content.meta.author || '') : '';
+            return {
+                id: '',
+                name: String(name || ''),
+                keyCount,
+                author,
+                updatedAt: String((row && row.updatedAt) || ''),
+                fileModified: '',
+                visibility: 'local'
+            };
+        })
+        .filter((x) => x.name)
+        .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
 function scheduleBaselineResync() {
     if (IS_OVERLAY_MODE) return;
     if (baselineResyncTimerId !== null) {
@@ -864,29 +935,9 @@ async function loadProjectConfigByName(name, options) {
         const goOn = await promptSaveIfDirty('切换配置');
         if (!goOn) return false;
     }
-    const row = savedConfigSummariesCache.find((x) => x.name === safeName) || null;
-    let loaded = null;
-    let alreadyApplied = false;
-    if (row && row.id) {
-        try {
-            loaded = await networkModule.getConfigById(row.id);
-        } catch (_) {
-            loaded = null;
-        }
-    }
-    if (!loaded) {
-        const sel = byId('saved-config-select');
-        if (!sel) return false;
-        sel.value = safeName;
-        loaded = await networkModule.loadSelectedProjectConfig({
-            selectEl: sel,
-            applyConfig,
-            suppressSuccessAlert: true
-        });
-        alreadyApplied = !!loaded;
-    }
+    const loaded = getLocalProfileContent(safeName);
     if (!loaded) return false;
-    if (!alreadyApplied) applyConfig(loaded);
+    applyConfig(loaded);
 
     currentConfigName = safeName;
     try {
@@ -908,28 +959,11 @@ async function loadProjectConfigByName(name, options) {
 async function deleteProjectConfigByName(name) {
     const safeName = String(name || '').trim();
     if (!safeName) return false;
-    const row = savedConfigSummariesCache.find((x) => x.name === safeName) || null;
-    if (row && row.id) {
-        if (!confirm('确定删除配置：' + safeName + ' ?')) return false;
-        try {
-            await networkModule.deleteConfigById(row.id);
-            await refreshSavedConfigSelect();
-            setObsFlowStatus('已删除配置：' + safeName, 'success');
-            return true;
-        } catch (e) {
-            alert('删除失败：' + (e && e.message ? e.message : 'unknown error'));
-            return false;
-        }
-    }
-    const sel = byId('saved-config-select');
-    if (!sel) return false;
-    sel.value = safeName;
-    const ok = await networkModule.deleteSelectedProjectConfig({
-        selectEl: sel,
-        onDeleted: refreshSavedConfigSelect
-    });
+    if (!confirm('确定删除本地方案：' + safeName + ' ?')) return false;
+    const ok = deleteLocalProfile(safeName);
     if (!ok) return false;
-    setObsFlowStatus('已删除配置：configs/' + safeName + '.json', 'success');
+    await refreshSavedConfigSelect();
+    setObsFlowStatus('已删除本地方案：' + safeName, 'success');
     return true;
 }
 
@@ -1043,31 +1077,106 @@ function renderSavedConfigRepoList(items) {
         });
         actions.appendChild(delBtn);
 
-        if (row.id) {
-            const publishBtn = document.createElement('button');
-            publishBtn.type = 'button';
-            publishBtn.className = 'btn';
-            publishBtn.textContent = '发布';
-            publishBtn.title = '发布到创意工坊';
-            publishBtn.addEventListener('click', async () => {
-                await publishCurrentConfigByName(name);
-            });
-            actions.appendChild(publishBtn);
-        }
-
         item.appendChild(actions);
         list.appendChild(item);
     });
+}
+
+async function refreshPublicConfigList() {
+    const list = byId('public-config-list');
+    const count = byId('public-config-count');
+    if (!list) return;
+    list.innerHTML = '';
+    try {
+        const resp = await fetch('/api/configs');
+        if (!resp.ok) throw new Error('public list not available');
+        const data = await resp.json();
+        const names = Array.isArray(data.names) ? data.names : [];
+        publicConfigNamesCache = names.slice();
+        if (count) count.textContent = '共 ' + names.length + ' 项';
+        if (!names.length) {
+            const empty = document.createElement('div');
+            empty.className = 'config-repo-empty';
+            empty.textContent = '暂无公开配置。';
+            list.appendChild(empty);
+            return;
+        }
+        names.forEach((name) => {
+            const row = document.createElement('div');
+            row.className = 'config-repo-item';
+
+            const main = document.createElement('div');
+            main.className = 'config-repo-main';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'config-repo-name config-repo-open-btn';
+            btn.textContent = name;
+            btn.title = '加载公开配置';
+            btn.addEventListener('click', async () => {
+                try {
+                    const r = await fetch('/api/configs/' + encodeURIComponent(name));
+                    const d = await r.json();
+                    const cfg = d && d.config ? d.config : null;
+                    if (!cfg) throw new Error('not found');
+                    applyConfig(cfg);
+                    currentConfigName = name;
+                    syncObsProfileNameEverywhere(name);
+                    setObsFlowStatus('已加载公开配置：' + name, 'success');
+                    scheduleBaselineResync();
+                    updateKeyList();
+                    invalidateCanvas();
+                } catch (_) {
+                    alert('加载公开配置失败：' + name);
+                }
+            });
+            main.appendChild(btn);
+            if (currentAuthUser && currentAuthUser.isAdmin) {
+                const adminTip = document.createElement('div');
+                adminTip.className = 'config-repo-meta';
+                adminTip.textContent = '管理员可覆盖更新';
+                main.appendChild(adminTip);
+            }
+            row.appendChild(main);
+            if (currentAuthUser && currentAuthUser.isAdmin) {
+                const actions = document.createElement('div');
+                actions.className = 'config-repo-actions';
+                const overwriteBtn = document.createElement('button');
+                overwriteBtn.type = 'button';
+                overwriteBtn.className = 'btn';
+                overwriteBtn.textContent = '管理员覆盖';
+                overwriteBtn.addEventListener('click', async () => {
+                    if (!confirm('确认用当前编辑内容覆盖公开配置「' + name + '」？')) return;
+                    try {
+                        await networkModule.updatePublicConfigByName(name, buildCurrentConfigObject());
+                        setObsFlowStatus('已覆盖公开配置：' + name, 'success');
+                        await refreshPublicConfigList();
+                    } catch (e) {
+                        alert('覆盖失败：' + (e && e.message ? e.message : 'unknown error'));
+                    }
+                });
+                actions.appendChild(overwriteBtn);
+                row.appendChild(actions);
+            }
+            list.appendChild(row);
+        });
+    } catch (_) {
+        if (count) count.textContent = '共 0 项';
+        const empty = document.createElement('div');
+        empty.className = 'config-repo-empty';
+        empty.textContent = '公开配置暂不可用。';
+        list.appendChild(empty);
+    }
 }
 
 function updateAuthStatusUi() {
     const el = byId('auth-user-status');
     if (!el) return;
     if (currentAuthUser && currentAuthUser.username) {
-        el.textContent = '已登录：' + currentAuthUser.username;
+        const adminTag = currentAuthUser.isAdmin ? '（管理员）' : '';
+        el.textContent = '已登录：' + currentAuthUser.username + adminTag;
         return;
     }
-    el.textContent = '未登录（将使用兼容旧接口）';
+    el.textContent = '未登录';
 }
 
 async function refreshAuthStatus() {
@@ -2364,10 +2473,23 @@ function buildCurrentConfigObject() {
 }
 
 async function refreshSavedConfigSelect() {
-    await networkModule.refreshSavedConfigSelect({
-        selectEl: byId('saved-config-select'),
-        onNames: renderSavedConfigRepoList
-    });
+    const items = listLocalProfileSummaries();
+    const sel = byId('saved-config-select');
+    if (sel) {
+        sel.innerHTML = '';
+        const opt0 = document.createElement('option');
+        opt0.value = '';
+        opt0.textContent = items.length ? '-- 选择本地方案 --' : '-- 暂无本地方案 --';
+        sel.appendChild(opt0);
+        items.forEach((x) => {
+            const o = document.createElement('option');
+            o.value = x.name;
+            o.textContent = x.name;
+            sel.appendChild(o);
+        });
+    }
+    renderSavedConfigRepoList(items);
+    await refreshPublicConfigList();
     syncObsProfileNameEverywhere(getCurrentConfigName());
     updateObsOverlayUrlField();
 }
@@ -2381,22 +2503,18 @@ async function saveConfigToProject() {
         setObsFlowStatus('已取消保存。');
         return false;
     }
-    const ok = await networkModule.saveConfigToProject({
-        nameInput: { value: profileName },
-        getCurrentConfig: () => {
-            const o = buildCurrentConfigObject();
-            return {
-                ...o,
-                meta: {
-                    author: String(profileMeta.author || '').trim(),
-                    updatedAt: new Date().toISOString()
-                }
-            };
-        },
-        onSaved: refreshSavedConfigSelect,
-        retainNameInput: true,
-        suppressSuccessAlert: true
-    });
+    const o = buildCurrentConfigObject();
+    const cfg = {
+        ...o,
+        meta: {
+            author: String(profileMeta.author || '').trim(),
+            updatedAt: new Date().toISOString()
+        }
+    };
+    upsertLocalProfile(profileName, cfg);
+    localStorage.setItem('dotaKeyboardConfig', JSON.stringify(cfg));
+    await refreshSavedConfigSelect();
+    const ok = true;
     if (ok) {
         currentConfigName = profileName;
         profileMeta = {
@@ -2412,7 +2530,7 @@ async function saveConfigToProject() {
         syncObsProfileNameEverywhere(profileName);
         persistLastActiveProfile(profileName);
         scheduleBaselineResync();
-        setObsFlowStatus('已保存配置：configs/' + profileName + '.json', 'success');
+        setObsFlowStatus('已保存到本地方案：' + profileName, 'success');
     }
     return ok;
 }
@@ -2435,10 +2553,15 @@ async function deleteSelectedProjectConfig() {
 }
 
 async function openConfigsFolder() {
-    const ok = await networkModule.openConfigsFolder();
-    if (ok) {
-        setObsFlowStatus('已尝试打开配置文件夹。把 .json 放进去后点「刷新列表」。', 'success');
-    }
+    const mapObj = readLocalProfilesMap();
+    const blob = new Blob([JSON.stringify(mapObj, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'tzk-local-profiles-backup.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setObsFlowStatus('已导出本地方案备份到下载目录。', 'success');
 }
 
 function loadSavedConfig() {
@@ -2546,9 +2669,35 @@ function showConfigLocation() {
 
 // ==================== WebSocket 功能 ====================
 
+function updateGlobalCaptureStatus(payload) {
+    const info = payload || {};
+    const status = String(info.status || '');
+    const isLocalRelay = !!info.isLocalRelay;
+    const chip = byId('global-capture-status');
+    const downloadBtn = byId('download-agent-btn');
+    if (!chip) return;
+
+    chip.classList.remove('connected', 'disconnected');
+    if (status === 'connected' && isLocalRelay) {
+        chip.textContent = '全局按键：可用';
+        chip.classList.add('connected');
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        return;
+    }
+    if (status === 'connecting') {
+        chip.textContent = '全局按键：检测中...';
+        if (downloadBtn) downloadBtn.style.display = '';
+        return;
+    }
+    chip.textContent = '全局按键：不可用（需 Agent）';
+    chip.classList.add('disconnected');
+    if (downloadBtn) downloadBtn.style.display = '';
+}
+
 function connectWebSocket() {
     const qs = new URLSearchParams(window.location.search || '');
-    const channel = (qs.get('channel') || qs.get('config') || 'demo').trim();
+    let channel = (qs.get('channel') || qs.get('config') || 'demo').trim();
+    if (channel === 'trial') channel = 'demo';
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const cloudWsUrl = wsProtocol + '//' + window.location.host + '/ws/realtime';
     const localWsUrl = 'ws://127.0.0.1:8766/ws/local';
@@ -2587,8 +2736,11 @@ function connectWebSocket() {
             set wsStatusFadeTimerId(v) {
                 wsStatusFadeTimerId = v;
             },
-            suppressStatus: IS_OVERLAY_MODE
+            suppressStatus: IS_OVERLAY_MODE,
+            statusElementId: 'server-link-status',
+            statusMountElementId: 'ws-status-mount'
         },
+        onTransportState: updateGlobalCaptureStatus,
         pressedKeys,
         invalidateCanvas
     });

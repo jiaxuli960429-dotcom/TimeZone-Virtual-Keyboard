@@ -141,6 +141,17 @@
         }
         return true;
     }
+
+    async function updatePublicConfigByName(name, content) {
+        const r = await fetch('/api/v1/public/configs/' + encodeURIComponent(name), {
+            method: 'PUT',
+            headers: buildAuthHeaders({ 'Content-Type': 'application/json; charset=utf-8' }),
+            body: JSON.stringify({ content })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'update public config failed');
+        return data;
+    }
     const LATENCY_LOG_INTERVAL_MS = 2000;
     let latencyWindowCount = 0;
     let latencyWindowSum = 0;
@@ -416,14 +427,16 @@
         invalidateCanvas();
     }
 
-    function showConnectionStatus(connected, state) {
+    function showConnectionStatus(status, state) {
         const st = state || {};
         if (st.suppressStatus) return st.wsStatusFadeTimerId || null;
-        let statusDiv = document.getElementById('ws-status');
-        const mount = document.getElementById('ws-status-mount');
+        const statusElementId = st.statusElementId || 'ws-status';
+        const mountElementId = st.statusMountElementId || 'ws-status-mount';
+        let statusDiv = document.getElementById(statusElementId);
+        const mount = document.getElementById(mountElementId);
         if (!statusDiv) {
             statusDiv = document.createElement('div');
-            statusDiv.id = 'ws-status';
+            statusDiv.id = statusElementId;
             statusDiv.className = 'ws-status-chip';
             if (mount) {
                 mount.appendChild(statusDiv);
@@ -441,11 +454,15 @@
         statusDiv.style.opacity = '1';
         statusDiv.classList.remove('connected', 'disconnected');
 
-        if (connected) {
-            statusDiv.textContent = '实时通道：已连接';
+        const isServerLink = statusElementId === 'server-link-status';
+        const prefix = isServerLink ? '服务器链路：' : '实时通道：';
+        if (status === 'connected' || status === true) {
+            statusDiv.textContent = prefix + '已连接';
             statusDiv.classList.add('connected');
+        } else if (status === 'connecting') {
+            statusDiv.textContent = prefix + '连接中...';
         } else {
-            statusDiv.textContent = '实时通道：未连接（请检查网络或服务器）';
+            statusDiv.textContent = prefix + '未连接（请检查网络或服务器）';
             statusDiv.classList.add('disconnected');
         }
 
@@ -460,11 +477,23 @@
         const role = (opts.role || 'overlay').trim();
         const urls = Array.isArray(opts.urls) && opts.urls.length ? opts.urls.slice() : [opts.url];
         let nextUrlIndex = 0;
+        let hasEverConnected = false;
+        let pendingFastFallback = false;
 
         function pickNextUrl() {
             const u = urls[nextUrlIndex % urls.length];
             nextUrlIndex += 1;
             return u;
+        }
+
+        function scheduleReconnect(delayMs) {
+            if (state.wsReconnectTimerId !== null) {
+                clearTimeout(state.wsReconnectTimerId);
+            }
+            state.wsReconnectTimerId = setTimeout(() => {
+                state.wsReconnectTimerId = null;
+                tryConnect();
+            }, delayMs);
         }
 
         function tryConnect() {
@@ -474,14 +503,20 @@
             } catch (err) {
                 console.warn('WebSocket connect init failed:', targetUrl, err);
                 state.wsConnected = false;
-                showConnectionStatus(false, state);
-                if (state.wsReconnectTimerId !== null) {
-                    clearTimeout(state.wsReconnectTimerId);
+                if (!hasEverConnected && urls.length > 1) {
+                    showConnectionStatus('connecting', state);
+                    scheduleReconnect(80);
+                    return;
                 }
-                state.wsReconnectTimerId = setTimeout(() => {
-                    state.wsReconnectTimerId = null;
-                    tryConnect();
-                }, reconnectDelayMs);
+                showConnectionStatus('disconnected', state);
+                if (typeof opts.onTransportState === 'function') {
+                    opts.onTransportState({
+                        status: 'disconnected',
+                        url: targetUrl,
+                        isLocalRelay: /127\.0\.0\.1:8766|localhost:8766/.test(targetUrl)
+                    });
+                }
+                scheduleReconnect(reconnectDelayMs);
                 return;
             }
 
@@ -498,9 +533,18 @@
                     })
                 );
                 console.log('WebSocket connected:', targetUrl);
+                hasEverConnected = true;
+                pendingFastFallback = false;
                 state.wsConnected = true;
                 state.useWebSocket = true;
-                showConnectionStatus(true, state);
+                showConnectionStatus('connected', state);
+                if (typeof opts.onTransportState === 'function') {
+                    opts.onTransportState({
+                        status: 'connected',
+                        url: targetUrl,
+                        isLocalRelay: /127\.0\.0\.1:8766|localhost:8766/.test(targetUrl)
+                    });
+                }
             };
 
             state.ws.onmessage = (event) => {
@@ -516,23 +560,53 @@
             state.ws.onclose = () => {
                 console.log('WebSocket disconnected:', targetUrl);
                 state.wsConnected = false;
-                showConnectionStatus(false, state);
-                if (state.wsReconnectTimerId !== null) {
-                    clearTimeout(state.wsReconnectTimerId);
+                if (!hasEverConnected && urls.length > 1 && !pendingFastFallback) {
+                    pendingFastFallback = true;
+                    showConnectionStatus('connecting', state);
+                    scheduleReconnect(80);
+                    return;
                 }
-                state.wsReconnectTimerId = setTimeout(() => {
-                    state.wsReconnectTimerId = null;
-                    tryConnect();
-                }, reconnectDelayMs);
+                pendingFastFallback = false;
+                showConnectionStatus('disconnected', state);
+                if (typeof opts.onTransportState === 'function') {
+                    opts.onTransportState({
+                        status: 'disconnected',
+                        url: targetUrl,
+                        isLocalRelay: /127\.0\.0\.1:8766|localhost:8766/.test(targetUrl)
+                    });
+                }
+                scheduleReconnect(reconnectDelayMs);
             };
 
             state.ws.onerror = (error) => {
                 console.error('WebSocket error:', targetUrl, error);
                 state.wsConnected = false;
-                showConnectionStatus(false, state);
+                if (!hasEverConnected && urls.length > 1) {
+                    showConnectionStatus('connecting', state);
+                    if (typeof opts.onTransportState === 'function') {
+                        opts.onTransportState({
+                            status: 'connecting',
+                            url: targetUrl,
+                            isLocalRelay: /127\.0\.0\.1:8766|localhost:8766/.test(targetUrl)
+                        });
+                    }
+                    return;
+                }
+                showConnectionStatus('disconnected', state);
+                if (typeof opts.onTransportState === 'function') {
+                    opts.onTransportState({
+                        status: 'disconnected',
+                        url: targetUrl,
+                        isLocalRelay: /127\.0\.0\.1:8766|localhost:8766/.test(targetUrl)
+                    });
+                }
             };
         }
 
+        showConnectionStatus('connecting', state);
+        if (typeof opts.onTransportState === 'function') {
+            opts.onTransportState({ status: 'connecting', url: '', isLocalRelay: false });
+        }
         tryConnect();
     }
 
@@ -550,6 +624,7 @@
         forkConfigById,
         getConfigById,
         deleteConfigById,
+        updatePublicConfigByName,
         refreshSavedConfigSelect,
         saveConfigToProject,
         loadSelectedProjectConfig,

@@ -162,6 +162,19 @@
             justify-content: flex-end;
             margin-left: auto;
         }
+        .global-capture-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .btn-mini-agent {
+            margin: 0;
+            padding: 6px 10px;
+            font-size: 11px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
 
         .preview-segmented {
             display: inline-flex;
@@ -1587,8 +1600,9 @@
                 </div>
                 <div class="preview-head-foot">
                     <p class="preview-head-tip">拖画布边缘可缩放 · 滑块即时生效 · 改数字后点「应用」</p>
-                    <div id="ws-status-mount" class="preview-ws-mount" aria-live="polite">
-                        <div id="ws-status" class="ws-status-chip disconnected">全局按键捕获：正在连接…</div>
+                    <div class="global-capture-wrap" aria-live="polite">
+                        <div id="global-capture-status" class="ws-status-chip disconnected">全局按键：未启用</div>
+                        <a id="download-agent-btn" class="btn btn-mini-agent" href="/downloads/TimeZoneAgent.exe">下载 Agent EXE</a>
                     </div>
                 </div>
             </div>
@@ -1813,29 +1827,31 @@
                                 </div>
                             </div>
                             <div class="product-card">
+                                <div class="product-card-title">公开配置</div>
+                                <div class="product-row">
+                                    <button class="btn" data-click="refreshSavedConfigSelect">刷新公开配置</button>
+                                </div>
+                            </div>
+                            <div class="product-card">
                                 <div class="product-card-title">账号</div>
                                 <div class="product-row">
                                     <button class="btn" data-click="promptRegister">注册</button>
                                     <button class="btn" data-click="promptLogin">登录</button>
                                     <button class="btn" data-click="doLogout">退出</button>
                                 </div>
-                            </div>
-                            <div class="product-card">
-                                <div class="product-card-title">创意工坊</div>
-                                <div class="product-row">
-                                    <button class="btn btn-primary" data-click="publishCurrentConfig">发布当前配置</button>
-                                    <button class="btn" data-click="showWorkshopList">刷新工坊列表</button>
-                                </div>
+                                <p id="auth-user-status" class="config-action-help" style="margin-top:8px;">未登录</p>
                             </div>
                         </div>
-                        <div id="auth-user-status" class="auth-status-chip">未登录（将使用兼容旧接口）</div>
                         <div id="workshop-panel" class="workshop-panel">
                             <div class="workshop-panel-head">
-                                <span>公开配置列表</span>
-                                <span id="workshop-count">0 项</span>
+                                <span>公开配置</span>
+                                <span id="public-config-count">共 0 项</span>
                             </div>
-                            <div id="workshop-list" class="workshop-list">
-                                <div class="workshop-empty">点击「刷新工坊列表」加载公开配置。</div>
+                            <div id="ws-status-mount" class="preview-ws-mount" style="margin:0 0 8px 0;">
+                                <div id="server-link-status" class="ws-status-chip">服务器链路：连接中...</div>
+                            </div>
+                            <div id="public-config-list" class="workshop-list">
+                                <div class="workshop-empty">点击「刷新公开配置」加载服务器上的方案。</div>
                             </div>
                         </div>
                     </div>
@@ -1848,7 +1864,7 @@
                             <span class="config-list-meta" id="saved-config-count">共 0 项</span>
                         </div>
                         <p class="config-action-help" style="margin-top:4px;">
-                            改名：另存为。当前方案名见页顶。
+                            公开配置加载后，点击「保存/另存为」即可存到本地方案。
                         </p>
                         <div id="saved-config-list" class="config-repo-list">
                             <div class="config-repo-empty">正在读取配置列表...</div>
@@ -1859,11 +1875,11 @@
                     <div class="control-group full-span">
                         <label>JSON 文件导入</label>
                         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-                            <button class="btn btn-primary" data-click="openConfigsFolder">打开配置文件夹</button>
+                            <button class="btn btn-primary" data-click="openConfigsFolder">导出本地方案备份</button>
                             <button class="btn" data-click="showConfigLocation">使用说明</button>
                         </div>
                         <p class="config-action-help">
-                            将 <code style="font-size:11px;">.json</code> 放入上述文件夹后，点击「刷新列表」。
+                            浏览器环境无法直接打开系统文件夹，点击上方按钮可导出当前本地方案 JSON 备份。
                         </p>
                     </div>
                 </div>

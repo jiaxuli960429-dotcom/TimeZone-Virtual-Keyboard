@@ -21,14 +21,18 @@ server {
     client_max_body_size 20m;
 
     root /opt/launch-advisor/app/TimeZone-Virtual-Keyboard/webroot;
-    index index.html;
+    index home.html index.html;
 
     location = /overlay {
         try_files /overlay.html =404;
     }
 
+    location = /keyboard {
+        try_files /index.html =404;
+    }
+
     location / {
-        try_files \$uri \$uri/ /index.html;
+        try_files \$uri \$uri/ /home.html;
     }
 
     location /api/ {

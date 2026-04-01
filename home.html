@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TimeZone - 直播工具箱</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4f7fb;
+            --panel: #ffffff;
+            --text: #1d2b3f;
+            --sub: #667a99;
+            --accent: #2f6bff;
+            --line: #dbe4f2;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: radial-gradient(1200px 700px at 20% -10%, #e9f0ff, transparent), var(--bg);
+            color: var(--text);
+        }
+        .wrap {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 32px 20px 40px;
+        }
+        .hero {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(32, 54, 93, 0.08);
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+        .sub {
+            margin: 0;
+            color: var(--sub);
+            font-size: 14px;
+        }
+        .tools {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 6px 18px rgba(32, 54, 93, 0.05);
+        }
+        .card h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .card p {
+            margin: 0;
+            color: var(--sub);
+            font-size: 13px;
+            line-height: 1.5;
+            min-height: 38px;
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            text-decoration: none;
+            display: inline-block;
+            border: 1px solid #cdd8ea;
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #2f4569;
+            background: #f8fbff;
+        }
+        .btn.primary {
+            color: #ffffff;
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <main class="wrap">
+        <section class="hero">
+            <h1>TimeZone 直播工具箱</h1>
+            <p class="sub">一个入口，管理你的直播小工具。当前可用：虚拟键盘（OBS 可直接使用）。</p>
+        </section>
+
+        <section class="tools">
+            <article class="card">
+                <h2>虚拟键盘</h2>
+                <p>可视化编辑按键样式并保存个人配置；也支持免登录快速试用。</p>
+                <div class="btn-row">
+                    <a class="btn primary" href="/keyboard">进入控制台</a>
+                    <a class="btn" href="/overlay?channel=demo">免登录试用</a>
+                </div>
+            </article>
+        </section>
+    </main>
+</body>
+</html>
